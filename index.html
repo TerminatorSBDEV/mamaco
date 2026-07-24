@@ -41,16 +41,6 @@
         .shop-item button { width: 100%; padding: 6px; margin-top: 6px; background: #38bdf8; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #0f172a; }
         .shop-item button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
 
-        /* Upload Progress Bar */
-        #progress-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 260px; background: #0f172a; border: 2px solid #38bdf8; padding: 15px; border-radius: 8px; z-index: 30; display: none; text-align: center; }
-        #progress-bar { width: 100%; height: 16px; background: #1e293b; border-radius: 8px; overflow: hidden; margin-top: 8px; }
-        #progress-fill { width: 0%; height: 100%; background: #22c55e; transition: width 0.1s; }
-
-        /* Download Progress Bar (Late Joiners / On Demand) */
-        #download-ui { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 260px; background: rgba(15, 23, 42, 0.95); border: 2px solid #38bdf8; padding: 10px 15px; border-radius: 8px; z-index: 40; display: none; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-        #dl-bar-bg { width: 100%; height: 12px; background: #1e293b; border-radius: 6px; margin-top: 8px; overflow: hidden; }
-        #dl-bar-fill { width: 0%; height: 100%; background: #38bdf8; transition: width 0.1s; }
-
         #minimap-container { position: absolute; top: 10px; right: 10px; width: 150px; height: 150px; background: rgba(15, 23, 42, 0.8); border: 2px solid #475569; border-radius: 8px; overflow: hidden; pointer-events: none; z-index: 10; }
         #minimapCanvas { width: 100%; height: 100%; display: block; }
     </style>
@@ -62,12 +52,6 @@
 
     <div id="top-btns">
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
-    </div>
-
-    <!-- Late Joiner / On Demand Download Progress -->
-    <div id="download-ui">
-        <div id="dl-text" style="font-size: 0.9rem; font-weight: bold;">Downloading Audio... 0%</div>
-        <div id="dl-bar-bg"><div id="dl-bar-fill"></div></div>
     </div>
 
     <div id="controls-hint">E: Wall | Y: Chat | H: Shop | 1-4: Select Weapon/Tool | WASD: Move | Right Click: Shoot/Use</div>
@@ -122,12 +106,6 @@
         <button onclick="document.getElementById('radio-modal').style.display='none'" style="width:100%; background:#475569; border:none; color:white; padding:6px; border-radius:4px; margin-top:10px; cursor:pointer;">Close</button>
     </div>
 
-    <!-- Upload Progress Modal -->
-    <div id="progress-container">
-        <div id="progress-text" style="font-size:0.9rem;">Uploading Audio File...</div>
-        <div id="progress-bar"><div id="progress-fill"></div></div>
-    </div>
-
     <div id="minimap-container">
         <canvas id="minimapCanvas" width="150" height="150"></canvas>
     </div>
@@ -155,7 +133,7 @@
             document.getElementById("controls-hint").style.display = "none";
         }
 
-        const link = "https://joseph-employer-sat-inclusion.trycloudflare.com";
+        const link = "https://steps-highlights-anybody-sports.trycloudflare.com";
         const key = "146cf8ce56";
         const socket = io(link, { auth: { token: "default_key" } });
 
@@ -197,11 +175,10 @@
         // Audio Context & Sound Synthesizer Engine
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        function playSfx(type, distanceScale = 1) {
-            if (distanceScale <= 0) return;
+        function playSfx(type) {
             const now = audioCtx.currentTime;
             const gain = audioCtx.createGain();
-            gain.gain.value = Math.min(1, distanceScale);
+            gain.gain.value = 1;
             gain.connect(audioCtx.destination);
 
             if (type === 'rifle') {
@@ -255,61 +232,117 @@
             }
         }
 
-        // Distance scale utility (0 to 1) max distance = 1200
-        function getDistanceScale(x, y) {
-            const dx = x - myPos.x;
-            const dy = y - myPos.y;
-            const dist = Math.hypot(dx, dy);
-            return Math.max(0, 1 - dist / 1200);
-        }
+        // Real-Time Audio Streaming Buffers
+        let localRadioAudio = null; // Local HTMLAudioElement
+        let localDeathAudioData = null; // Local base64 string for death sound
+        let isRadioStreaming = false;
+        let streamInterval = null;
 
-        // Audio Caching & Remote Audio Players
-        const audioCache = {}; // base64 / blob urls
-        const audioStatus = {}; // keyId -> 'downloading' | 'complete'
-        const pendingPlays = {}; // keyId -> { type, ... }
-        let activeDownloads = {}; // keyId -> { received, total }
-        const playingAudios = {}; // HTMLAudioElement or AudioContext sources
+        const incomingMediaSource = {}; // streamKey -> MediaSource
+        const incomingSourceBuffer = {}; // streamKey -> SourceBuffer
+        const incomingAudioElements = {}; // streamKey -> HTMLAudioElement
+        const incomingQueue = {}; // streamKey -> Array of ArrayBuffer chunks
 
-        function updateDownloadUI() {
-            const ui = document.getElementById("download-ui");
-            const keys = Object.keys(activeDownloads);
-            if (keys.length === 0) {
-                ui.style.display = "none";
-                return;
-            }
-            
-            ui.style.display = "block";
-            let totalReceived = 0;
-            let totalExpected = 0;
-            keys.forEach(k => {
-                totalReceived += activeDownloads[k].received;
-                totalExpected += activeDownloads[k].total;
-            });
-            
-            const pct = totalExpected > 0 ? Math.round((totalReceived / totalExpected) * 100) : 0;
-            document.getElementById("dl-text").innerText = `Downloading Audio (${keys.length})... ${pct}%`;
-            document.getElementById("dl-bar-fill").style.width = `${pct}%`;
-        }
+        function initIncomingStream(streamKey) {
+            if (incomingAudioElements[streamKey]) return;
 
-        function playRemoteAudio(keyId, srcUrl, x, y, loop = false, startOffset = 0) {
-            if (playingAudios[keyId]) {
-                playingAudios[keyId].pause();
-            }
-            const audio = new Audio(srcUrl);
-            audio.loop = loop;
-            if (startOffset > 0) audio.currentTime = startOffset;
-            const distScale = getDistanceScale(x, y);
-            audio.volume = Math.min(1, Math.max(0, distScale));
+            const audio = new Audio();
+            const ms = new MediaSource();
+            audio.src = URL.createObjectURL(ms);
+            audio.volume = 1;
             audio.play().catch(() => {});
-            playingAudios[keyId] = audio;
-            return audio;
+
+            incomingAudioElements[streamKey] = audio;
+            incomingMediaSource[streamKey] = ms;
+            incomingQueue[streamKey] = [];
+
+            ms.addEventListener('sourceopen', () => {
+                try {
+                    const sb = ms.addSourceBuffer('audio/webm; codecs="opus"');
+                    incomingSourceBuffer[streamKey] = sb;
+
+                    sb.addEventListener('updateend', () => {
+                        if (incomingQueue[streamKey].length > 0 && !sb.updating) {
+                            const nextChunk = incomingQueue[streamKey].shift();
+                            sb.appendBuffer(nextChunk);
+                        }
+                    });
+                } catch(e) {}
+            });
         }
 
-        function stopRemoteAudio(keyId) {
-            if (playingAudios[keyId]) {
-                playingAudios[keyId].pause();
-                delete playingAudios[keyId];
+        function appendStreamChunk(streamKey, arrayBuffer) {
+            initIncomingStream(streamKey);
+            const sb = incomingSourceBuffer[streamKey];
+            if (sb && !sb.updating) {
+                try {
+                    sb.appendBuffer(arrayBuffer);
+                } catch(e) {
+                    incomingQueue[streamKey].push(arrayBuffer);
+                }
+            } else {
+                incomingQueue[streamKey].push(arrayBuffer);
             }
+        }
+
+        function stopIncomingStream(streamKey) {
+            if (incomingAudioElements[streamKey]) {
+                incomingAudioElements[streamKey].pause();
+                delete incomingAudioElements[streamKey];
+            }
+            if (incomingMediaSource[streamKey]) {
+                delete incomingMediaSource[streamKey];
+            }
+            delete incomingSourceBuffer[streamKey];
+            delete incomingQueue[streamKey];
+        }
+
+        function startRadioStreaming() {
+            if (!localRadioAudio || isRadioStreaming) return;
+            isRadioStreaming = true;
+
+            socket.emit("RemoteEvent", { type: "stream_start", data: { id: myId, streamType: "radio" } });
+
+            // Stream live chunks using MediaRecorder
+            try {
+                const stream = localRadioAudio.captureStream ? localRadioAudio.captureStream() : localRadioAudio.mozCaptureStream();
+                const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm; codecs=opus', audioBitsPerSecond: 64000 });
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0 && isRadioStreaming) {
+                        e.data.arrayBuffer().then(buffer => {
+                            socket.emit("RemoteEvent", {
+                                type: "stream_chunk",
+                                data: { id: myId, streamType: "radio", chunk: buffer }
+                            });
+                        });
+                    }
+                };
+
+                mediaRecorder.start(250); // 250ms real-time chunk interval
+                localRadioAudio.play();
+
+                localRadioAudio.onended = () => {
+                    stopRadioStreaming();
+                };
+
+                streamInterval = mediaRecorder;
+            } catch(e) {
+                console.error("Streaming error:", e);
+            }
+        }
+
+        function stopRadioStreaming() {
+            if (!isRadioStreaming) return;
+            isRadioStreaming = false;
+            if (streamInterval && streamInterval.state !== "inactive") {
+                streamInterval.stop();
+            }
+            if (localRadioAudio) {
+                localRadioAudio.pause();
+                localRadioAudio.currentTime = 0;
+            }
+            socket.emit("RemoteEvent", { type: "stream_stop", data: { id: myId, streamType: "radio" } });
         }
 
         socket.on("connect", () => {
@@ -327,7 +360,6 @@
                 walls = pkt.data.walls || [];
                 const serverBullets = pkt.data.bullets || [];
 
-                // Match server bullets to local lerp bullet objects
                 bullets = {};
                 serverBullets.forEach(b => {
                     bullets[b.id] = b;
@@ -352,7 +384,7 @@
 
                         if (myHp <= 0 && !isDead) {
                             isDead = true;
-                            stopRemoteAudio(`radio_${myId}`);
+                            stopRadioStreaming();
                             setTimeout(() => {
                                 isDead = false;
                                 socket.emit("RemoteEvent", { type: "respawn", data: { id: myId } });
@@ -373,83 +405,26 @@
                 addChatMessage(pkt.data.id, pkt.data.text);
                 chatBubbles[pkt.data.id] = {
                     text: pkt.data.text,
-                    expireTime: Date.now() + 14000 // +10s duration = 14s
+                    expireTime: Date.now() + 14000
                 };
             } else if (pkt.type === "sfx") {
-                const scale = getDistanceScale(pkt.data.x, pkt.data.y);
-                playSfx(pkt.data.sfxType, scale);
-            } else if (pkt.type === "audio_download_meta") {
-                const { keyId, totalChunks } = pkt.data;
-                activeDownloads[keyId] = { received: 0, total: totalChunks };
-                updateDownloadUI();
-            } else if (pkt.type === "audio_cache_chunk") {
-                const { keyId, chunk, chunkIndex, totalChunks } = pkt.data;
-                if (!audioCache[keyId]) audioCache[keyId] = [];
-                audioCache[keyId][chunkIndex] = chunk;
-                
-                if (activeDownloads[keyId]) {
-                    // On-Demand targeted download chunks tracking
-                    activeDownloads[keyId].received++;
-                    updateDownloadUI();
-                    
-                    if (activeDownloads[keyId].received >= activeDownloads[keyId].total) {
-                        audioStatus[keyId] = 'complete';
-                        delete activeDownloads[keyId];
-                        updateDownloadUI();
-                        
-                        // Execute pending play queue
-                        if (pendingPlays[keyId]) {
-                            const p = pendingPlays[keyId];
-                            const fullData = audioCache[keyId].join('');
-                            if (p.type === 'death') {
-                                playRemoteAudio(keyId, fullData, p.x, p.y, false);
-                            } else if (p.type === 'radio') {
-                                const elapsed = (Date.now() - p.startTime) / 1000;
-                                playRemoteAudio(keyId, fullData, p.x, p.y, true, elapsed);
-                            }
-                            delete pendingPlays[keyId];
-                        }
-                    }
-                } else {
-                    // Live broadcast chunks tracking (someone is uploading right now)
-                    let count = 0;
-                    for (let i = 0; i < totalChunks; i++) {
-                        if (audioCache[keyId][i]) count++;
-                    }
-                    if (count >= totalChunks) {
-                        audioStatus[keyId] = 'complete';
-                    }
+                playSfx(pkt.data.sfxType);
+            } else if (pkt.type === "audio_stream_broadcast") {
+                const { id, streamType, chunk } = pkt.data;
+                const streamKey = `${streamType}_${id}`;
+                if (id !== myId) {
+                    appendStreamChunk(streamKey, chunk);
                 }
-            } else if (pkt.type === "play_death_sound") {
-                const { id, x, y } = pkt.data;
-                const keyId = `death_${id}`;
-                if (audioStatus[keyId] === 'complete') {
-                    const fullData = audioCache[keyId].join('');
-                    playRemoteAudio(keyId, fullData, x, y, false);
-                } else {
-                    if (audioStatus[keyId] !== 'downloading') {
-                        audioStatus[keyId] = 'downloading';
-                        pendingPlays[keyId] = { type: 'death', x, y };
-                        socket.emit("RemoteEvent", { type: "request_audio_download", data: { id: myId, keyId } });
-                    }
-                }
-            } else if (pkt.type === "radio_state") {
-                const { id, playing, x, y, startTime } = pkt.data;
-                const keyId = `radio_${id}`;
-                if (playing) {
-                    if (audioStatus[keyId] === 'complete') {
-                        const fullData = audioCache[keyId].join('');
-                        const elapsed = (Date.now() - startTime) / 1000;
-                        playRemoteAudio(keyId, fullData, x, y, true, elapsed);
-                    } else {
-                        if (audioStatus[keyId] !== 'downloading') {
-                            audioStatus[keyId] = 'downloading';
-                            pendingPlays[keyId] = { type: 'radio', x, y, startTime };
-                            socket.emit("RemoteEvent", { type: "request_audio_download", data: { id: myId, keyId } });
-                        }
-                    }
-                } else {
-                    stopRemoteAudio(keyId);
+            } else if (pkt.type === "audio_stream_stop") {
+                const { id, streamType } = pkt.data;
+                const streamKey = `${streamType}_${id}`;
+                stopIncomingStream(streamKey);
+            } else if (pkt.type === "trigger_death_sound") {
+                const { id, audioData } = pkt.data;
+                if (audioData) {
+                    const audio = new Audio(audioData);
+                    audio.volume = 1;
+                    audio.play().catch(() => {});
                 }
             }
         });
@@ -469,7 +444,6 @@
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        // Shop UI Updates
         function updateShopUI() {
             const btnDeath = document.getElementById("btn-buy-death");
             if (myItems.deathSound) {
@@ -523,70 +497,37 @@
             }
         };
 
-        // File Chunk Upload Handler with Progress Bar (500ms ping delay per 100KB chunk)
-        async function handleAudioUpload(file, category, maxBytes, maxDurationSec) {
-            if (file.size > maxBytes) {
-                alert(`File too large! Max allowed: ${Math.round(maxBytes/1024/1024)}MB`);
+        // File Selection Handlers (Instant Definition)
+        document.getElementById("file-death").onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 4 * 1024 * 1024) {
+                alert("File too large! Max 4MB.");
                 return;
             }
-
-            const audioTemp = new Audio(URL.createObjectURL(file));
-            audioTemp.onloadedmetadata = async () => {
-                if (audioTemp.duration > maxDurationSec) {
-                    alert(`Audio duration too long! Max allowed: ${maxDurationSec}s`);
-                    return;
-                }
-
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    const base64Data = e.target.result;
-                    const chunkSize = 100 * 1024; // 100KB chunks
-                    const totalChunks = Math.ceil(base64Data.length / chunkSize);
-
-                    // Show progress GUI
-                    const progressModal = document.getElementById("progress-container");
-                    const progressFill = document.getElementById("progress-fill");
-                    progressModal.style.display = "block";
-
-                    // Notify server validation
-                    socket.emit("RemoteEvent", { 
-                        type: "upload_start", 
-                        data: { id: myId, category, size: file.size, duration: audioTemp.duration, totalChunks } 
-                    });
-
-                    for (let i = 0; i < totalChunks; i++) {
-                        const chunk = base64Data.substring(i * chunkSize, (i + 1) * chunkSize);
-                        socket.emit("RemoteEvent", {
-                            type: "upload_chunk",
-                            data: { id: myId, category, chunk, chunkIndex: i, totalChunks }
-                        });
-
-                        const pct = Math.round(((i + 1) / totalChunks) * 100);
-                        progressFill.style.width = `${pct}%`;
-
-                        // 500ms ping interval per chunk broadcast
-                        await new Promise(res => setTimeout(res, 500));
-                    }
-
-                    setTimeout(() => { progressModal.style.display = "none"; }, 300);
-                };
-                reader.readAsDataURL(file);
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                localDeathAudioData = evt.target.result;
+                socket.emit("RemoteEvent", { type: "set_death_sound", data: { id: myId, audioData: localDeathAudioData } });
             };
-        }
-
-        document.getElementById("file-death").onchange = (e) => {
-            if (e.target.files[0]) handleAudioUpload(e.target.files[0], "death", 4 * 1024 * 1024, 10);
+            reader.readAsDataURL(file);
         };
 
         document.getElementById("file-radio").onchange = (e) => {
-            if (e.target.files[0]) handleAudioUpload(e.target.files[0], "radio", 10 * 1024 * 1024, 300);
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 10 * 1024 * 1024) {
+                alert("File too large! Max 10MB.");
+                return;
+            }
+            localRadioAudio = new Audio(URL.createObjectURL(file));
         };
 
         document.getElementById("btn-radio-play").onclick = () => {
-            socket.emit("RemoteEvent", { type: "toggle_radio", data: { id: myId, play: true, x: myPos.x, y: myPos.y } });
+            startRadioStreaming();
         };
         document.getElementById("btn-radio-stop").onclick = () => {
-            socket.emit("RemoteEvent", { type: "toggle_radio", data: { id: myId, play: false } });
+            stopRadioStreaming();
         };
 
         // Inputs & Weapon Switching
@@ -761,7 +702,6 @@
             const worldMouseX = myPos.x + (mousePos.x - canvas.width / 2);
             const worldMouseY = myPos.y + (mousePos.y - canvas.height / 2);
 
-            // Check players
             for (let id in renderPlayers) {
                 if (id === myId || renderPlayers[id].hp <= 0) continue;
                 const p = renderPlayers[id];
@@ -770,7 +710,6 @@
                     return;
                 }
             }
-            // Check walls
             for (let i = 0; i < walls.length; i++) {
                 const w = walls[i];
                 if (Math.hypot(w.x - worldMouseX, w.y - worldMouseY) < 40) {
@@ -795,7 +734,6 @@
                     tryShoot();
                 }
 
-                // Dragging item with PhysGun
                 if (currentWeapon === 4 && isMouseDown && physTarget) {
                     const targetWorldX = myPos.x + (mousePos.x - screenCenterX);
                     const targetWorldY = myPos.y + (mousePos.y - screenCenterY);
@@ -814,7 +752,6 @@
                 }
             }
 
-            // Linear lerp bullet movement smoothly
             for (let bId in renderBullets) {
                 const rb = renderBullets[bId];
                 if (bullets[bId]) {
@@ -908,7 +845,6 @@
             ctx.lineWidth = 4;
             ctx.strokeRect(0, 0, 3000, 3000);
 
-            // Walls
             walls.forEach((w, index) => {
                 ctx.save();
                 ctx.translate(w.x, w.y);
@@ -928,7 +864,6 @@
                 ctx.restore();
             });
 
-            // Players
             for (let id in renderPlayers) {
                 let p = renderPlayers[id];
                 if (p.hp <= 0) continue;
@@ -936,7 +871,6 @@
                 ctx.save();
                 ctx.translate(p.x, p.y);
 
-                // Cyan outline if being dragged by physgun
                 if (physTarget && physTarget.type === 'player' && physTarget.id === id) {
                     ctx.strokeStyle = "#00ffff";
                     ctx.lineWidth = 4;
@@ -946,19 +880,16 @@
                 ctx.fillStyle = p.color || '#fff';
                 ctx.fillRect(-20, -20, 40, 40);
 
-                // Player ID text above head
                 ctx.font = "bold 12px sans-serif";
                 ctx.fillStyle = "#38bdf8";
                 ctx.textAlign = "center";
                 ctx.fillText(id, 0, -42);
 
-                // HP Bar
                 ctx.fillStyle = "#ef4444";
                 ctx.fillRect(-20, -32, 40, 5);
                 ctx.fillStyle = "#22c55e";
                 ctx.fillRect(-20, -32, 40 * (p.hp / 100), 5);
 
-                // Yellow Radio on Back if equipped
                 if (players[id] && players[id].items && players[id].items.radio) {
                     ctx.fillStyle = "#facc15";
                     ctx.fillRect(-8, 18, 16, 8);
@@ -966,7 +897,6 @@
 
                 ctx.rotate(p.angle);
                 
-                // Weapon models
                 const wType = p.weapon;
                 if (wType === 1) { // Rifle
                     ctx.fillStyle = "#64748b";
@@ -979,7 +909,7 @@
                     ctx.fillRect(2, -4, 45, 8);
                     ctx.fillStyle = "#ef4444";
                     ctx.fillRect(15, -9, 10, 5);
-                } else if (wType === 4) { // Gmod Physics Gun
+                } else if (wType === 4) { // PhysGun
                     ctx.fillStyle = "#0284c7";
                     ctx.fillRect(2, -4, 30, 8);
                     ctx.fillStyle = "#00ffff";
@@ -988,7 +918,6 @@
 
                 ctx.restore();
 
-                // Sniper Laser
                 if (id === myId && currentWeapon === 3 && !isDead) {
                     ctx.save();
                     ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
@@ -1001,13 +930,11 @@
                     ctx.restore();
                 }
 
-                // Chat bubbles
                 if (chatBubbles[id] && chatBubbles[id].expireTime > Date.now()) {
                     drawBubble(p.x, p.y, chatBubbles[id].text);
                 }
             }
 
-            // Lerped Bullets
             ctx.fillStyle = "#facc15";
             for (let bId in renderBullets) {
                 const b = renderBullets[bId];
