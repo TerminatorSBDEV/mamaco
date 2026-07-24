@@ -54,7 +54,7 @@
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
-    <div id="controls-hint">E: Wall | Y: Chat | H: Shop | 1-4: Select Weapon/Tool | WASD: Move | Right Click: Shoot/Use</div>
+    <div id="controls-hint">E: Wall | Y: Chat | H: Shop | R: Radio | 1-4: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
     
     <div id="chat-box">
         <div id="chat-messages"></div>
@@ -97,10 +97,10 @@
     <!-- Radio Panel GUI -->
     <div id="radio-modal">
         <div class="modal-title">Radio Panel</div>
-        <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:8px;">Max 10MB, &lt;5 mins audio file.</div>
+        <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:8px;">Max 10MB audio file.</div>
         <input type="file" id="file-radio" accept="audio/*" style="margin-bottom:10px; width:100%;" />
         <div style="display:flex; gap:8px;">
-            <button id="btn-radio-play" style="flex:1; background:#22c55e; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Play</button>
+            <button id="btn-radio-play" style="flex:1; background:#22c55e; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Play & Stream</button>
             <button id="btn-radio-stop" style="flex:1; background:#ef4444; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Stop</button>
         </div>
         <button onclick="document.getElementById('radio-modal').style.display='none'" style="width:100%; background:#475569; border:none; color:white; padding:6px; border-radius:4px; margin-top:10px; cursor:pointer;">Close</button>
@@ -133,7 +133,7 @@
             document.getElementById("controls-hint").style.display = "none";
         }
 
-        const link = "https://joseph-employer-sat-inclusion.trycloudflare.com";
+        const link = "https://steps-highlights-anybody-sports.trycloudflare.com";
         const key = "146cf8ce56";
         const socket = io(link, { auth: { token: "default_key" } });
 
@@ -147,11 +147,9 @@
         let lastShot = 0;
         let lastBuild = 0;
         let aimAngle = 0;
-        let currentWeapon = 1; // 1: Rifle, 2: SMG, 3: Sniper, 4: Physics Gun
+        let currentWeapon = 1;
         let isMouseDown = false;
-
-        // Physics Gun state
-        let physTarget = null; // { type: 'player'|'wall', id: string, wallIndex: number }
+        let physTarget = null;
 
         const weaponStats = {
             1: { name: "Rifle", rate: 200 },
@@ -163,7 +161,7 @@
         const keys = { w: false, a: false, s: false, d: false };
         let players = {};
         let renderPlayers = {};
-        let bullets = {}; // Object with interpolation targets
+        let bullets = {};
         let renderBullets = {};
         let walls = [];
         let chatBubbles = {};
@@ -232,24 +230,24 @@
             }
         }
 
-        // Real-Time Audio Streaming Buffers
-        let localRadioAudio = null; // Local HTMLAudioElement
-        let localDeathAudioData = null; // Local base64 string for death sound
+        // Real-Time Audio Streaming Buffers & State
+        let localRadioAudio = null;
+        let localDeathAudioData = null;
         let isRadioStreaming = false;
-        let streamInterval = null;
+        let mediaRecorder = null;
 
-        const incomingMediaSource = {}; // streamKey -> MediaSource
-        const incomingSourceBuffer = {}; // streamKey -> SourceBuffer
-        const incomingAudioElements = {}; // streamKey -> HTMLAudioElement
-        const incomingQueue = {}; // streamKey -> Array of ArrayBuffer chunks
+        const incomingMediaSource = {};
+        const incomingSourceBuffer = {};
+        const incomingAudioElements = {};
+        const incomingQueue = {};
 
         function initIncomingStream(streamKey) {
             if (incomingAudioElements[streamKey]) return;
 
             const audio = new Audio();
+            audio.volume = 1;
             const ms = new MediaSource();
             audio.src = URL.createObjectURL(ms);
-            audio.volume = 1;
             audio.play().catch(() => {});
 
             incomingAudioElements[streamKey] = audio;
@@ -303,10 +301,16 @@
 
             socket.emit("RemoteEvent", { type: "stream_start", data: { id: myId, streamType: "radio" } });
 
-            // Stream live chunks using MediaRecorder
             try {
-                const stream = localRadioAudio.captureStream ? localRadioAudio.captureStream() : localRadioAudio.mozCaptureStream();
-                const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm; codecs=opus', audioBitsPerSecond: 64000 });
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const sourceNode = audioCtx.createMediaElementSource(localRadioAudio);
+                const destNode = audioCtx.createMediaStreamDestination();
+                sourceNode.connect(audioCtx.destination); // Hear it locally
+                sourceNode.connect(destNode);
+
+                mediaRecorder = new MediaRecorder(destNode.stream, { mimeType: 'audio/webm; codecs=opus', audioBitsPerSecond: 64000 });
 
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0 && isRadioStreaming) {
@@ -319,24 +323,23 @@
                     }
                 };
 
-                mediaRecorder.start(250); // 250ms real-time chunk interval
+                mediaRecorder.start(250);
                 localRadioAudio.play();
 
                 localRadioAudio.onended = () => {
                     stopRadioStreaming();
                 };
-
-                streamInterval = mediaRecorder;
             } catch(e) {
                 console.error("Streaming error:", e);
+                isRadioStreaming = false;
             }
         }
 
         function stopRadioStreaming() {
             if (!isRadioStreaming) return;
             isRadioStreaming = false;
-            if (streamInterval && streamInterval.state !== "inactive") {
-                streamInterval.stop();
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
             }
             if (localRadioAudio) {
                 localRadioAudio.pause();
@@ -497,7 +500,6 @@
             }
         };
 
-        // File Selection Handlers (Instant Definition)
         document.getElementById("file-death").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -530,7 +532,6 @@
             stopRadioStreaming();
         };
 
-        // Inputs & Weapon Switching
         const chatInput = document.getElementById("chat-input");
         const chatContainer = document.getElementById("chat-container");
 
@@ -630,7 +631,6 @@
         });
         window.addEventListener("contextmenu", (e) => e.preventDefault());
 
-        // Joystick
         const joystickEl = document.getElementById("joystick");
         const stickEl = document.getElementById("stick");
         let joyCenter = { x: 0, y: 0 };
@@ -697,7 +697,6 @@
             socket.emit("RemoteEvent", { type: "build_wall", data: { id: myId, angle: aimAngle } });
         }
 
-        // Physics Gun Logic
         function startPhysGunDrag() {
             const worldMouseX = myPos.x + (mousePos.x - canvas.width / 2);
             const worldMouseY = myPos.y + (mousePos.y - canvas.height / 2);
@@ -898,18 +897,18 @@
                 ctx.rotate(p.angle);
                 
                 const wType = p.weapon;
-                if (wType === 1) { // Rifle
+                if (wType === 1) {
                     ctx.fillStyle = "#64748b";
                     ctx.fillRect(5, -5, 34, 10);
-                } else if (wType === 2) { // SMG
+                } else if (wType === 2) {
                     ctx.fillStyle = "#475569";
                     ctx.fillRect(4, -4, 22, 8);
-                } else if (wType === 3) { // Sniper
+                } else if (wType === 3) {
                     ctx.fillStyle = "#334155";
                     ctx.fillRect(2, -4, 45, 8);
                     ctx.fillStyle = "#ef4444";
                     ctx.fillRect(15, -9, 10, 5);
-                } else if (wType === 4) { // PhysGun
+                } else if (wType === 4) {
                     ctx.fillStyle = "#0284c7";
                     ctx.fillRect(2, -4, 30, 8);
                     ctx.fillStyle = "#00ffff";
