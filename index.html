@@ -16,15 +16,18 @@
 
         #joystick { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none; z-index: 10; }
         #stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; pointer-events: none; }
+
+        #right-joystick { position: absolute; bottom: 40px; right: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none; z-index: 10; }
+        #right-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; pointer-events: none; }
         
-        #action-btns { position: absolute; bottom: 40px; right: 40px; display: flex; gap: 10px; z-index: 10; }
+        #action-btns { position: absolute; bottom: 180px; right: 40px; display: flex; gap: 10px; z-index: 10; }
         .action-btn { width: 55px; height: 55px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; cursor: pointer; color: #fff; }
         
-        .mob-weapon-btn { position: absolute; bottom: 105px; width: 50px; height: 50px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; display: none; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; cursor: pointer; z-index: 10; color: #fff; }
-        #mob-w1 { right: 40px; }
-        #mob-w2 { right: 98px; }
-        #mob-w3 { right: 156px; }
-        #mob-w4 { right: 214px; display: none; }
+        .mob-weapon-btn { position: absolute; bottom: 180px; width: 50px; height: 50px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; display: none; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; cursor: pointer; z-index: 10; color: #fff; }
+        #mob-w1 { right: 105px; }
+        #mob-w2 { right: 163px; }
+        #mob-w3 { right: 221px; }
+        #mob-w4 { right: 279px; display: none; }
         .mob-weapon-btn.active { background: rgba(56, 189, 248, 0.4); border-color: #38bdf8; }
 
         /* Floating Chat Box */
@@ -64,6 +67,7 @@
     </div>
 
     <div id="joystick"><div id="stick"></div></div>
+    <div id="right-joystick"><div id="right-stick"></div></div>
     
     <div id="action-btns">
         <div id="chat-btn" class="action-btn">💬</div>
@@ -127,6 +131,7 @@
         const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         if (isMobile) {
             document.getElementById("joystick").style.display = "block";
+            document.getElementById("right-joystick").style.display = "block";
             document.getElementById("mob-w1").style.display = "flex";
             document.getElementById("mob-w2").style.display = "flex";
             document.getElementById("mob-w3").style.display = "flex";
@@ -168,6 +173,7 @@
 
         let joyActive = false;
         let joyVector = { x: 0, y: 0 };
+        let rightJoyActive = false;
         let chatOpen = false;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -231,15 +237,12 @@
 
         // File Broadcast System (5s 64kbps chunks, 1s interval)
         let localRadioFile = null;
-        let localDeathAudioBuffer = null;
-        let activeBroadcastToken = null;
 
         async function prepareAndBroadcastAudio(file, broadcastType) {
             if (!file) return;
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-            // Downsample / export to WebM Opus at ~64kbps using OfflineAudioContext
             const offlineCtx = new OfflineAudioContext(1, audioBuffer.sampleRate * 5, audioBuffer.sampleRate);
             const source = offlineCtx.createBufferSource();
             source.buffer = audioBuffer;
@@ -249,7 +252,6 @@
             const renderedBuffer = await offlineCtx.startRendering();
             const streamDest = audioCtx.createMediaStreamDestination();
             
-            // Replay rendered buffer into MediaRecorder to capture clean 64kbps Opus chunks
             const playerNode = audioCtx.createBufferSource();
             playerNode.buffer = renderedBuffer;
             playerNode.connect(audioCtx.destination);
@@ -263,7 +265,6 @@
             };
 
             recorder.onstop = () => {
-                // Send chunks sequentially every 1 second
                 const sessionId = Math.random().toString(36).substring(2, 9);
                 socket.emit("RemoteEvent", { type: "audio_upload_start", data: { id: myId, sessionId, broadcastType } });
 
@@ -271,12 +272,11 @@
                 const interval = setInterval(() => {
                     if (chunkIndex < chunks.length) {
                         chunks[chunkIndex].arrayBuffer().then(buf => {
-                            socket.emit("RemoteEvent", { type: "audio_upload_chunk", data: { id: myId, sessionId, chunkIndex, chunk: buf } });
+                            socket.emit("RemoteEvent", { type: "audio_upload_chunk", data: { id: myId, sessionId, chunkIndex, chunk: buf, broadcastType } });
                         });
                         chunkIndex++;
                     } else {
                         clearInterval(interval);
-                        socket.emit("RemoteEvent", { type: "audio_upload_complete", data: { id: myId, sessionId, broadcastType } });
                     }
                 }, 1000);
             };
@@ -288,8 +288,58 @@
             };
         }
 
-        // Incoming audio playback storage
-        const incomingAudioSessions = {};
+        // Real-Time Audio Chunk Relay & Playback (bypassing Cloudflare size limits)
+        const activeStreamSessions = {};
+
+        socket.on("audio_chunk_relay", (pkt) => {
+            const { sessionId, chunkIndex, chunk, broadcastType, id } = pkt.data;
+            if (!activeStreamSessions[sessionId]) {
+                const mediaSource = new MediaSource();
+                const audio = new Audio();
+                audio.src = URL.createObjectURL(mediaSource);
+                audio.volume = 1;
+                
+                activeStreamSessions[sessionId] = {
+                    mediaSource,
+                    audio,
+                    sourceBuffer: null,
+                    queue: []
+                };
+
+                mediaSource.addEventListener('sourceopen', () => {
+                    try {
+                        const sb = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
+                        activeStreamSessions[sessionId].sourceBuffer = sb;
+                        sb.addEventListener('updateend', () => {
+                            processQueue(sessionId);
+                        });
+                        processQueue(sessionId);
+                    } catch(e) {}
+                });
+
+                audio.play().catch(() => {});
+            }
+
+            const session = activeStreamSessions[sessionId];
+            session.queue[chunkIndex] = chunk;
+            processQueue(sessionId);
+        });
+
+        function processQueue(sessionId) {
+            const session = activeStreamSessions[sessionId];
+            if (!session || !session.sourceBuffer || session.sourceBuffer.updating) return;
+
+            for (let i = 0; i < session.queue.length; i++) {
+                if (session.queue[i] && !session.appendedFlags?.[i]) {
+                    if (!session.appendedFlags) session.appendedFlags = {};
+                    session.appendedFlags[i] = true;
+                    try {
+                        session.sourceBuffer.appendBuffer(session.queue[i]);
+                    } catch(e) {}
+                    break;
+                }
+            }
+        }
 
         socket.on("connect", () => {
             socket.emit("join_virtual_server", { key });
@@ -354,47 +404,8 @@
                 };
             } else if (pkt.type === "sfx") {
                 playSfx(pkt.data.sfxType);
-            } else if (pkt.type === "audio_broadcast_ready") {
-                const { id, sessionId, broadcastType } = pkt.data;
-                playCompleteAudioSession(id, sessionId);
             }
         });
-
-        // Request chunk buffers from server and play assembled stream instantly without progress bars
-        function playCompleteAudioSession(broadcasterId, sessionId) {
-            socket.emit("RemoteEvent", { type: "request_audio_stream", data: { sessionId } });
-            
-            socket.once(`audio_stream_payload_${sessionId}`, async (payload) => {
-                const { chunks } = payload; // Array of ArrayBuffers
-                if (!chunks || chunks.length === 0) return;
-
-                const mediaSource = new MediaSource();
-                const audio = new Audio();
-                audio.src = URL.createObjectURL(mediaSource);
-                audio.volume = 1;
-
-                mediaSource.addEventListener('sourceopen', () => {
-                    try {
-                        const sb = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
-                        let index = 0;
-
-                        sb.addEventListener('updateend', () => {
-                            if (index < chunks.length && !sb.updating) {
-                                sb.appendBuffer(chunks[index++]);
-                            } else if (index >= chunks.length && mediaSource.readyState === 'open') {
-                                try { mediaSource.endOfStream(); } catch(e) {}
-                            }
-                        });
-
-                        if (chunks.length > 0) {
-                            sb.appendBuffer(chunks[index++]);
-                        }
-                    } catch(e) {}
-                });
-
-                audio.play().catch(() => {});
-            });
-        }
 
         function addChatMessage(id, text) {
             const container = document.getElementById("chat-messages");
@@ -590,50 +601,96 @@
         const joystickEl = document.getElementById("joystick");
         const stickEl = document.getElementById("stick");
         let joyCenter = { x: 0, y: 0 };
+        let leftTouchId = null;
+
+        const rightJoystickEl = document.getElementById("right-joystick");
+        const rightStickEl = document.getElementById("right-stick");
+        let rightJoyCenter = { x: 0, y: 0 };
+        let rightTouchId = null;
 
         joystickEl.addEventListener("touchstart", (e) => {
-            if (chatOpen) return;
+            if (chatOpen || leftTouchId !== null) return;
+            const touch = e.changedTouches[0];
+            leftTouchId = touch.identifier;
             joyActive = true;
             const rect = joystickEl.getBoundingClientRect();
             joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            e.preventDefault();
+        });
+
+        rightJoystickEl.addEventListener("touchstart", (e) => {
+            if (chatOpen || rightTouchId !== null) return;
+            const touch = e.changedTouches[0];
+            rightTouchId = touch.identifier;
+            rightJoyActive = true;
+            const rect = rightJoystickEl.getBoundingClientRect();
+            rightJoyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            
+            if (currentWeapon === 4) {
+                mousePos.x = touch.clientX;
+                mousePos.y = touch.clientY;
+                startPhysGunDrag();
+            }
+            e.preventDefault();
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (!joyActive || chatOpen) return;
-            const touch = e.touches[0];
-            const dx = touch.clientX - joyCenter.x;
-            const dy = touch.clientY - joyCenter.y;
-            const dist = Math.min(50, Math.hypot(dx, dy));
-            const angle = Math.atan2(dy, dx);
+            if (chatOpen) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.identifier === leftTouchId && joyActive) {
+                    const dx = touch.clientX - joyCenter.x;
+                    const dy = touch.clientY - joyCenter.y;
+                    const dist = Math.min(50, Math.hypot(dx, dy));
+                    const angle = Math.atan2(dy, dx);
 
-            joyVector.x = Math.cos(angle) * (dist / 50);
-            joyVector.y = Math.sin(angle) * (dist / 50);
-            stickEl.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
-        });
+                    joyVector.x = Math.cos(angle) * (dist / 50);
+                    joyVector.y = Math.sin(angle) * (dist / 50);
+                    stickEl.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+                }
+                if (touch.identifier === rightTouchId && rightJoyActive) {
+                    const dx = touch.clientX - rightJoyCenter.x;
+                    const dy = touch.clientY - rightJoyCenter.y;
+                    const dist = Math.hypot(dx, dy);
+                    const clampedDist = Math.min(50, dist);
+                    const angle = Math.atan2(dy, dx);
 
-        window.addEventListener("touchend", () => {
-            if (joyActive) {
-                joyActive = false;
-                joyVector = { x: 0, y: 0 };
-                stickEl.style.transform = `translate(0px, 0px)`;
+                    aimAngle = angle;
+                    rightStickEl.style.transform = `translate(${Math.cos(angle)*clampedDist}px, ${Math.sin(angle)*clampedDist}px)`;
+
+                    // Pulling paddle all the way out of the circle starts shooting while aiming
+                    if (dist >= 50) {
+                        isMouseDown = true;
+                        if (currentWeapon !== 4) tryShoot();
+                    } else {
+                        isMouseDown = false;
+                    }
+
+                    if (currentWeapon === 4) {
+                        mousePos.x = touch.clientX;
+                        mousePos.y = touch.clientY;
+                    }
+                }
             }
         });
 
-        window.addEventListener("touchstart", (e) => {
-            if (isDead || chatOpen) return;
-            const touch = e.touches[0];
-            if (touch.clientX > window.innerWidth - 220 && touch.clientY > window.innerHeight - 150) return;
-            if (touch.clientX > 220 || touch.clientY < canvas.height - 180) {
-                mousePos.x = touch.clientX;
-                mousePos.y = touch.clientY;
-                isMouseDown = true;
-                if (currentWeapon === 4) startPhysGunDrag();
-                else tryShoot();
+        window.addEventListener("touchend", (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.identifier === leftTouchId) {
+                    joyActive = false;
+                    leftTouchId = null;
+                    joyVector = { x: 0, y: 0 };
+                    stickEl.style.transform = `translate(0px, 0px)`;
+                }
+                if (touch.identifier === rightTouchId) {
+                    rightJoyActive = false;
+                    rightTouchId = null;
+                    rightStickEl.style.transform = `translate(0px, 0px)`;
+                    isMouseDown = false;
+                    if (currentWeapon === 4) stopPhysGunDrag();
+                }
             }
-        });
-        window.addEventListener("touchend", () => {
-            isMouseDown = false;
-            if (currentWeapon === 4) stopPhysGunDrag();
         });
 
         function tryShoot() {
@@ -660,14 +717,14 @@
             for (let id in renderPlayers) {
                 if (id === myId || renderPlayers[id].hp <= 0) continue;
                 const p = renderPlayers[id];
-                if (Math.hypot(p.x - worldMouseX, p.y - worldMouseY) < 30) {
+                if (Math.hypot(p.x - worldMouseX, p.y - worldMouseY) < 40) {
                     physTarget = { type: 'player', id };
                     return;
                 }
             }
             for (let i = 0; i < walls.length; i++) {
                 const w = walls[i];
-                if (Math.hypot(w.x - worldMouseX, w.y - worldMouseY) < 40) {
+                if (Math.hypot(w.x - worldMouseX, w.y - worldMouseY) < 50) {
                     physTarget = { type: 'wall', wallIndex: i };
                     return;
                 }
@@ -683,7 +740,10 @@
             if (!isDead && !chatOpen) {
                 const screenCenterX = canvas.width / 2;
                 const screenCenterY = canvas.height / 2;
-                aimAngle = Math.atan2(mousePos.y - screenCenterY, mousePos.x - screenCenterX);
+                
+                if (!isMobile) {
+                    aimAngle = Math.atan2(mousePos.y - screenCenterY, mousePos.x - screenCenterX);
+                }
 
                 if (isMouseDown && currentWeapon !== 4) {
                     tryShoot();
