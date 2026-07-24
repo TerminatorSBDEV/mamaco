@@ -34,7 +34,7 @@
         #chat-container { display: none; padding: 6px; background: rgba(30, 41, 59, 0.9); }
         #chat-input { width: 93%; padding: 6px; background: rgba(15, 23, 42, 0.9); border: 1px solid #38bdf8; color: #fff; border-radius: 4px; font-size: 0.85rem; outline: none; }
 
-        /* Shop Modal */
+        /* Shop & Radio Modals */
         #shop-modal, #radio-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
         .modal-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; text-align: center; }
         .shop-item { margin-bottom: 12px; padding: 8px; background: #1e293b; border-radius: 6px; }
@@ -100,7 +100,7 @@
         <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:8px;">Max 10MB audio file.</div>
         <input type="file" id="file-radio" accept="audio/*" style="margin-bottom:10px; width:100%;" />
         <div style="display:flex; gap:8px;">
-            <button id="btn-radio-play" style="flex:1; background:#22c55e; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Play & Stream</button>
+            <button id="btn-radio-play" style="flex:1; background:#22c55e; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Play & Broadcast</button>
             <button id="btn-radio-stop" style="flex:1; background:#ef4444; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Stop</button>
         </div>
         <button onclick="document.getElementById('radio-modal').style.display='none'" style="width:100%; background:#475569; border:none; color:white; padding:6px; border-radius:4px; margin-top:10px; cursor:pointer;">Close</button>
@@ -170,7 +170,6 @@
         let joyVector = { x: 0, y: 0 };
         let chatOpen = false;
 
-        // Audio Context & Sound Synthesizer Engine
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         function playSfx(type) {
@@ -230,123 +229,67 @@
             }
         }
 
-        // Real-Time Audio Streaming Buffers & State
-        let localRadioAudio = null;
-        let localDeathAudioData = null;
-        let isRadioStreaming = false;
-        let mediaRecorder = null;
+        // File Broadcast System (5s 64kbps chunks, 1s interval)
+        let localRadioFile = null;
+        let localDeathAudioBuffer = null;
+        let activeBroadcastToken = null;
 
-        const incomingMediaSource = {};
-        const incomingSourceBuffer = {};
-        const incomingAudioElements = {};
-        const incomingQueue = {};
+        async function prepareAndBroadcastAudio(file, broadcastType) {
+            if (!file) return;
+            const arrayBuffer = await file.arrayBuffer();
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-        function initIncomingStream(streamKey) {
-            if (incomingAudioElements[streamKey]) return;
+            // Downsample / export to WebM Opus at ~64kbps using OfflineAudioContext
+            const offlineCtx = new OfflineAudioContext(1, audioBuffer.sampleRate * 5, audioBuffer.sampleRate);
+            const source = offlineCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offlineCtx.destination);
+            source.start(0);
 
-            const audio = new Audio();
-            audio.volume = 1;
-            const ms = new MediaSource();
-            audio.src = URL.createObjectURL(ms);
-            audio.play().catch(() => {});
+            const renderedBuffer = await offlineCtx.startRendering();
+            const streamDest = audioCtx.createMediaStreamDestination();
+            
+            // Replay rendered buffer into MediaRecorder to capture clean 64kbps Opus chunks
+            const playerNode = audioCtx.createBufferSource();
+            playerNode.buffer = renderedBuffer;
+            playerNode.connect(audioCtx.destination);
+            playerNode.connect(streamDest);
 
-            incomingAudioElements[streamKey] = audio;
-            incomingMediaSource[streamKey] = ms;
-            incomingQueue[streamKey] = [];
+            const recorder = new MediaRecorder(streamDest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 });
+            let chunks = [];
 
-            ms.addEventListener('sourceopen', () => {
-                try {
-                    const sb = ms.addSourceBuffer('audio/webm; codecs="opus"');
-                    incomingSourceBuffer[streamKey] = sb;
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
 
-                    sb.addEventListener('updateend', () => {
-                        if (incomingQueue[streamKey].length > 0 && !sb.updating) {
-                            const nextChunk = incomingQueue[streamKey].shift();
-                            sb.appendBuffer(nextChunk);
-                        }
-                    });
-                } catch(e) {}
-            });
-        }
+            recorder.onstop = () => {
+                // Send chunks sequentially every 1 second
+                const sessionId = Math.random().toString(36).substring(2, 9);
+                socket.emit("RemoteEvent", { type: "audio_upload_start", data: { id: myId, sessionId, broadcastType } });
 
-        function appendStreamChunk(streamKey, arrayBuffer) {
-            initIncomingStream(streamKey);
-            const sb = incomingSourceBuffer[streamKey];
-            if (sb && !sb.updating) {
-                try {
-                    sb.appendBuffer(arrayBuffer);
-                } catch(e) {
-                    incomingQueue[streamKey].push(arrayBuffer);
-                }
-            } else {
-                incomingQueue[streamKey].push(arrayBuffer);
-            }
-        }
-
-        function stopIncomingStream(streamKey) {
-            if (incomingAudioElements[streamKey]) {
-                incomingAudioElements[streamKey].pause();
-                delete incomingAudioElements[streamKey];
-            }
-            if (incomingMediaSource[streamKey]) {
-                delete incomingMediaSource[streamKey];
-            }
-            delete incomingSourceBuffer[streamKey];
-            delete incomingQueue[streamKey];
-        }
-
-        function startRadioStreaming() {
-            if (!localRadioAudio || isRadioStreaming) return;
-            isRadioStreaming = true;
-
-            socket.emit("RemoteEvent", { type: "stream_start", data: { id: myId, streamType: "radio" } });
-
-            try {
-                if (audioCtx.state === 'suspended') {
-                    audioCtx.resume();
-                }
-                const sourceNode = audioCtx.createMediaElementSource(localRadioAudio);
-                const destNode = audioCtx.createMediaStreamDestination();
-                sourceNode.connect(audioCtx.destination); // Hear it locally
-                sourceNode.connect(destNode);
-
-                mediaRecorder = new MediaRecorder(destNode.stream, { mimeType: 'audio/webm; codecs=opus', audioBitsPerSecond: 64000 });
-
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data && e.data.size > 0 && isRadioStreaming) {
-                        e.data.arrayBuffer().then(buffer => {
-                            socket.emit("RemoteEvent", {
-                                type: "stream_chunk",
-                                data: { id: myId, streamType: "radio", chunk: buffer }
-                            });
+                let chunkIndex = 0;
+                const interval = setInterval(() => {
+                    if (chunkIndex < chunks.length) {
+                        chunks[chunkIndex].arrayBuffer().then(buf => {
+                            socket.emit("RemoteEvent", { type: "audio_upload_chunk", data: { id: myId, sessionId, chunkIndex, chunk: buf } });
                         });
+                        chunkIndex++;
+                    } else {
+                        clearInterval(interval);
+                        socket.emit("RemoteEvent", { type: "audio_upload_complete", data: { id: myId, sessionId, broadcastType } });
                     }
-                };
+                }, 1000);
+            };
 
-                mediaRecorder.start(250);
-                localRadioAudio.play();
-
-                localRadioAudio.onended = () => {
-                    stopRadioStreaming();
-                };
-            } catch(e) {
-                console.error("Streaming error:", e);
-                isRadioStreaming = false;
-            }
+            recorder.start();
+            playerNode.start(0);
+            playerNode.onended = () => {
+                if (recorder.state === "recording") recorder.stop();
+            };
         }
 
-        function stopRadioStreaming() {
-            if (!isRadioStreaming) return;
-            isRadioStreaming = false;
-            if (mediaRecorder && mediaRecorder.state !== "inactive") {
-                mediaRecorder.stop();
-            }
-            if (localRadioAudio) {
-                localRadioAudio.pause();
-                localRadioAudio.currentTime = 0;
-            }
-            socket.emit("RemoteEvent", { type: "stream_stop", data: { id: myId, streamType: "radio" } });
-        }
+        // Incoming audio playback storage
+        const incomingAudioSessions = {};
 
         socket.on("connect", () => {
             socket.emit("join_virtual_server", { key });
@@ -387,7 +330,6 @@
 
                         if (myHp <= 0 && !isDead) {
                             isDead = true;
-                            stopRadioStreaming();
                             setTimeout(() => {
                                 isDead = false;
                                 socket.emit("RemoteEvent", { type: "respawn", data: { id: myId } });
@@ -412,25 +354,47 @@
                 };
             } else if (pkt.type === "sfx") {
                 playSfx(pkt.data.sfxType);
-            } else if (pkt.type === "audio_stream_broadcast") {
-                const { id, streamType, chunk } = pkt.data;
-                const streamKey = `${streamType}_${id}`;
-                if (id !== myId) {
-                    appendStreamChunk(streamKey, chunk);
-                }
-            } else if (pkt.type === "audio_stream_stop") {
-                const { id, streamType } = pkt.data;
-                const streamKey = `${streamType}_${id}`;
-                stopIncomingStream(streamKey);
-            } else if (pkt.type === "trigger_death_sound") {
-                const { id, audioData } = pkt.data;
-                if (audioData) {
-                    const audio = new Audio(audioData);
-                    audio.volume = 1;
-                    audio.play().catch(() => {});
-                }
+            } else if (pkt.type === "audio_broadcast_ready") {
+                const { id, sessionId, broadcastType } = pkt.data;
+                playCompleteAudioSession(id, sessionId);
             }
         });
+
+        // Request chunk buffers from server and play assembled stream instantly without progress bars
+        function playCompleteAudioSession(broadcasterId, sessionId) {
+            socket.emit("RemoteEvent", { type: "request_audio_stream", data: { sessionId } });
+            
+            socket.once(`audio_stream_payload_${sessionId}`, async (payload) => {
+                const { chunks } = payload; // Array of ArrayBuffers
+                if (!chunks || chunks.length === 0) return;
+
+                const mediaSource = new MediaSource();
+                const audio = new Audio();
+                audio.src = URL.createObjectURL(mediaSource);
+                audio.volume = 1;
+
+                mediaSource.addEventListener('sourceopen', () => {
+                    try {
+                        const sb = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
+                        let index = 0;
+
+                        sb.addEventListener('updateend', () => {
+                            if (index < chunks.length && !sb.updating) {
+                                sb.appendBuffer(chunks[index++]);
+                            } else if (index >= chunks.length && mediaSource.readyState === 'open') {
+                                try { mediaSource.endOfStream(); } catch(e) {}
+                            }
+                        });
+
+                        if (chunks.length > 0) {
+                            sb.appendBuffer(chunks[index++]);
+                        }
+                    } catch(e) {}
+                });
+
+                audio.play().catch(() => {});
+            });
+        }
 
         function addChatMessage(id, text) {
             const container = document.getElementById("chat-messages");
@@ -450,7 +414,7 @@
         function updateShopUI() {
             const btnDeath = document.getElementById("btn-buy-death");
             if (myItems.deathSound) {
-                btnDeath.innerText = "OWNED | Change Death Sound";
+                btnDeath.innerText = "OWNED | Upload Death Sound";
                 btnDeath.disabled = false;
                 btnDeath.onclick = () => document.getElementById("file-death").click();
             } else {
@@ -459,7 +423,7 @@
 
             const btnRadio = document.getElementById("btn-buy-radio");
             if (myItems.radio) {
-                btnRadio.innerText = "OWNED | Equip";
+                btnRadio.innerText = "OWNED | Open Radio";
                 btnRadio.disabled = false;
                 btnRadio.onclick = () => {
                     document.getElementById("shop-modal").style.display = "none";
@@ -471,7 +435,7 @@
 
             const btnPhys = document.getElementById("btn-buy-phys");
             if (myItems.physGun) {
-                btnPhys.innerText = "OWNED | Press 4 on PC/Mobile to Equip";
+                btnPhys.innerText = "OWNED | Press 4 to Equip";
                 btnPhys.disabled = false;
                 document.getElementById("mob-w4").style.display = "flex";
             } else {
@@ -503,33 +467,25 @@
         document.getElementById("file-death").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            if (file.size > 4 * 1024 * 1024) {
-                alert("File too large! Max 4MB.");
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                localDeathAudioData = evt.target.result;
-                socket.emit("RemoteEvent", { type: "set_death_sound", data: { id: myId, audioData: localDeathAudioData } });
-            };
-            reader.readAsDataURL(file);
+            prepareAndBroadcastAudio(file, "death");
         };
 
         document.getElementById("file-radio").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            if (file.size > 10 * 1024 * 1024) {
-                alert("File too large! Max 10MB.");
-                return;
-            }
-            localRadioAudio = new Audio(URL.createObjectURL(file));
+            localRadioFile = file;
         };
 
         document.getElementById("btn-radio-play").onclick = () => {
-            startRadioStreaming();
+            if (localRadioFile) {
+                prepareAndBroadcastAudio(localRadioFile, "radio");
+                document.getElementById("radio-modal").style.display = "none";
+            } else {
+                alert("Please select a radio audio file first.");
+            }
         };
         document.getElementById("btn-radio-stop").onclick = () => {
-            stopRadioStreaming();
+            document.getElementById("radio-modal").style.display = "none";
         };
 
         const chatInput = document.getElementById("chat-input");
