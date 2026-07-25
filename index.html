@@ -69,7 +69,7 @@
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
-    <div id="controls-hint">Hold E: Spawn Menu | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
+    <div id="controls-hint">E: Spawn Menu | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
     
     <div id="chat-box">
         <div id="chat-messages"></div>
@@ -83,7 +83,7 @@
     
     <div id="action-btns">
         <div id="chat-btn" class="action-btn">💬</div>
-        <div id="build-btn" class="action-btn" title="Hold to open Spawn Menu">🧱</div>
+        <div id="build-btn" class="action-btn" title="Click to open Spawn Menu">🧱</div>
     </div>
 
     <div id="mob-w1" class="mob-weapon-btn active">W1</div>
@@ -734,9 +734,6 @@
             socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
         }
 
-        let eHoldTimer = null;
-        let buildHoldTimer = null;
-
         window.addEventListener("keydown", (e) => {
             if (e.key.toLowerCase() === 'y' && !chatOpen) {
                 e.preventDefault();
@@ -744,12 +741,8 @@
             } else if (e.key === 'Enter' && chatOpen) {
                 sendChat();
             } else if (e.key.toLowerCase() === 'e' && !chatOpen && !isDead) {
-                if (!eHoldTimer) {
-                    eHoldTimer = setTimeout(() => {
-                        const modal = document.getElementById("gmod-modal");
-                        modal.style.display = modal.style.display === "block" ? "none" : "block";
-                    }, 500);
-                }
+                const modal = document.getElementById("gmod-modal");
+                modal.style.display = modal.style.display === "block" ? "none" : "block";
             } else if (e.key.toLowerCase() === 'h' && !chatOpen) {
                 const modal = document.getElementById("shop-modal");
                 modal.style.display = modal.style.display === "block" ? "none" : "block";
@@ -773,12 +766,6 @@
         });
 
         window.addEventListener("keyup", (e) => {
-            if (e.key.toLowerCase() === 'e') {
-                if (eHoldTimer) {
-                    clearTimeout(eHoldTimer);
-                    eHoldTimer = null;
-                }
-            }
             if (!chatOpen) {
                 if (e.key.toLowerCase() === 'w') keys.w = false;
                 if (e.key.toLowerCase() === 'a') keys.a = false;
@@ -790,18 +777,10 @@
         document.getElementById("chat-btn").onclick = toggleChat;
         
         const buildBtn = document.getElementById("build-btn");
-        buildBtn.addEventListener("touchstart", () => {
+        buildBtn.addEventListener("click", () => {
             if (isDead || chatOpen) return;
-            buildHoldTimer = setTimeout(() => {
-                const modal = document.getElementById("gmod-modal");
-                modal.style.display = modal.style.display === "block" ? "none" : "block";
-            }, 500);
-        });
-        buildBtn.addEventListener("touchend", () => {
-            if (buildHoldTimer) {
-                clearTimeout(buildHoldTimer);
-                buildHoldTimer = null;
-            }
+            const modal = document.getElementById("gmod-modal");
+            modal.style.display = modal.style.display === "block" ? "none" : "block";
         });
 
         document.getElementById("mob-w1").onclick = () => setWeapon(1);
