@@ -1,8 +1,8 @@
-<!-- Test Your Guns - Client Script -->
+<!-- sandbox.io - Client Script -->
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Test Your Guns</title>
+    <title>sandbox.io</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #0f172a; color: #fff; font-family: sans-serif; overflow: hidden; user-select: none; }
@@ -173,6 +173,7 @@
         let bullets = {};
         let renderBullets = {};
         let walls = [];
+        let medkits = [];
         let chatBubbles = {};
 
         let joyActive = false;
@@ -181,10 +182,19 @@
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        function playSfx(type) {
+        function playSfx(type, posX, posY) {
             const now = audioCtx.currentTime;
             const gain = audioCtx.createGain();
-            gain.gain.value = 1;
+            
+            // Spatial attenuation
+            let volume = 1;
+            if (posX !== undefined && posY !== undefined) {
+                const dist = Math.hypot(myPos.x - posX, myPos.y - posY);
+                const maxDist = 1200;
+                if (dist > maxDist) return;
+                volume = Math.max(0, 1 - (dist / maxDist));
+            }
+            gain.gain.value = volume;
             gain.connect(audioCtx.destination);
 
             if (type === 'rifle') {
@@ -246,7 +256,10 @@
             }
         }
 
-        // Full-length audio streaming via MediaStream Destination without 5s cap
+        // Full-length audio streaming without local double-play (removed client-sided audio)
+        let activeRecorder = null;
+        let activePlayerNode = null;
+
         async function prepareAndBroadcastAudio(file, broadcastType) {
             if (!file) return;
             const arrayBuffer = await file.arrayBuffer();
@@ -254,11 +267,13 @@
 
             const streamDest = audioCtx.createMediaStreamDestination();
             const playerNode = audioCtx.createBufferSource();
+            activePlayerNode = playerNode;
             playerNode.buffer = audioBuffer;
-            playerNode.connect(audioCtx.destination);
+            // DO NOT connect to audioCtx.destination locally so sender doesn't hear double play!
             playerNode.connect(streamDest);
 
             const recorder = new MediaRecorder(streamDest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 });
+            activeRecorder = recorder;
             let chunkIndex = 0;
             const sessionId = Math.random().toString(36).substring(2, 9);
 
@@ -284,6 +299,23 @@
             };
         }
 
+        function stopAllAudioStreams() {
+            if (activeRecorder && activeRecorder.state === "recording") {
+                try { activeRecorder.stop(); } catch(e) {}
+            }
+            if (activePlayerNode) {
+                try { activePlayerNode.stop(); } catch(e) {}
+                activePlayerNode = null;
+            }
+            for (let sId in incomingAudioStreams) {
+                const st = incomingAudioStreams[sId];
+                if (st && st.audio) {
+                    st.audio.pause();
+                    st.audio.src = "";
+                }
+            }
+        }
+
         const incomingAudioStreams = {};
 
         socket.on("connect", () => {
@@ -299,6 +331,7 @@
             if (pkt.type === "state_update") {
                 const serverPlayers = pkt.data.players;
                 walls = pkt.data.walls || [];
+                medkits = pkt.data.medkits || [];
                 const serverBullets = pkt.data.bullets || [];
 
                 bullets = {};
@@ -324,9 +357,11 @@
                         document.getElementById("shop-pts").innerText = myPoints;
                         updateShopUI();
 
-                        if (prevHp > 0 && myHp <= 0 && myItems.deathSound) {
-                            // If player has custom death sound configured, broadcast it on death
-                            if (localDeathFile) prepareAndBroadcastAudio(localDeathFile, "death");
+                        if (prevHp > 0 && myHp <= 0) {
+                            stopAllAudioStreams();
+                            if (myItems.deathSound && localDeathFile) {
+                                prepareAndBroadcastAudio(localDeathFile, "death");
+                            }
                         }
 
                         if (myHp <= 0 && !isDead) {
@@ -354,9 +389,15 @@
                     expireTime: Date.now() + 14000
                 };
             } else if (pkt.type === "sfx") {
-                playSfx(pkt.data.sfxType);
+                playSfx(pkt.data.sfxType, pkt.data.x, pkt.data.y);
+            } else if (pkt.type === "medkit_sfx") {
+                // Base64 medkit sound execution point
+                try {
+                    const audio = new Audio(pkt.data.base64);
+                    audio.play().catch(()=>{});
+                } catch(e) {}
             } else if (pkt.type === "audio_chunk_receive") {
-                const { sessionId, chunkIndex, chunk, isLast } = pkt.data;
+                const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
                 
                 if (!incomingAudioStreams[sessionId]) {
                     const mediaSource = new MediaSource();
@@ -367,6 +408,7 @@
                     incomingAudioStreams[sessionId] = {
                         mediaSource,
                         audio,
+                        senderId,
                         sourceBuffer: null,
                         queue: [],
                         isComplete: false,
@@ -395,6 +437,25 @@
                 }
             }
         });
+
+        // Spatial volume updates for incoming audio streams
+        setInterval(() => {
+            for (let sId in incomingAudioStreams) {
+                const st = incomingAudioStreams[sId];
+                if (st && st.audio && st.senderId) {
+                    const senderPlayer = players[st.senderId] || renderPlayers[st.senderId];
+                    if (senderPlayer) {
+                        const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
+                        const maxDist = 1500;
+                        if (dist > maxDist) {
+                            st.audio.volume = 0;
+                        } else {
+                            st.audio.volume = Math.max(0, 1 - (dist / maxDist));
+                        }
+                    }
+                }
+            }
+        }, 200);
 
         function processAudioQueue(sessionId) {
             const streamData = incomingAudioStreams[sessionId];
@@ -501,6 +562,7 @@
 
         document.getElementById("btn-radio-play").onclick = () => {
             if (localRadioFile) {
+                stopAllAudioStreams();
                 prepareAndBroadcastAudio(localRadioFile, "radio");
                 document.getElementById("radio-modal").style.display = "none";
             } else {
@@ -508,6 +570,7 @@
             }
         };
         document.getElementById("btn-radio-stop").onclick = () => {
+            stopAllAudioStreams();
             document.getElementById("radio-modal").style.display = "none";
         };
 
@@ -879,6 +942,15 @@
                 mCtx.fillRect(w.x * scale - 1, w.y * scale - 1, 2, 2);
             });
 
+            // Draw medkits on minimap as green plus signs
+            mCtx.fillStyle = "#22c55e";
+            mCtx.font = "bold 10px sans-serif";
+            mCtx.textAlign = "center";
+            mCtx.textBaseline = "middle";
+            medkits.forEach(mk => {
+                mCtx.fillText("+", mk.x * scale, mk.y * scale);
+            });
+
             for (let id in renderPlayers) {
                 let p = renderPlayers[id];
                 if (p.hp <= 0) continue;
@@ -923,6 +995,24 @@
             ctx.strokeStyle = "#475569";
             ctx.lineWidth = 4;
             ctx.strokeRect(0, 0, 3000, 3000);
+
+            // Draw medkits on main canvas
+            medkits.forEach(mk => {
+                ctx.save();
+                ctx.translate(mk.x, mk.y);
+                ctx.fillStyle = "#22c55e";
+                ctx.beginPath();
+                ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(-3, -8, 6, 16);
+                ctx.fillRect(-8, -3, 16, 6);
+                ctx.restore();
+            });
 
             walls.forEach((w, index) => {
                 ctx.save();
