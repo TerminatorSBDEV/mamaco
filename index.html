@@ -311,7 +311,7 @@
             }
         }
 
-        // Texture cache & loading for performance (prevents network / render lag)
+        // Texture cache & loading for performance
         const textureCache = {};
         function getCachedTexture(dataUrl) {
             if (!dataUrl) return null;
@@ -422,7 +422,6 @@
                         updateShopUI();
 
                         if (prevHp > 0 && myHp <= 0) {
-                            stopAllAudioStreams();
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -430,7 +429,6 @@
 
                         if (myHp <= 0 && !isDead) {
                             isDead = true;
-                            stopAllAudioStreams(); // Stop listening to audio on death
                             setTimeout(() => {
                                 isDead = false;
                                 socket.emit("RemoteEvent", { type: "respawn", data: { id: myId } });
@@ -502,15 +500,11 @@
             }
         });
 
-        // Spatial volume updates and dead audio cutoff
+        // Spatial volume updates for radio streams (allows dead players to continue listening)
         setInterval(() => {
             for (let sId in incomingAudioStreams) {
                 const st = incomingAudioStreams[sId];
                 if (st && st.audio) {
-                    if (isDead) {
-                        st.audio.volume = 0;
-                        continue;
-                    }
                     const senderPlayer = players[st.senderId] || renderPlayers[st.senderId];
                     if (senderPlayer) {
                         const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
@@ -533,7 +527,7 @@
                 const nextChunk = streamData.queue.shift();
                 try {
                     streamData.sourceBuffer.appendBuffer(nextChunk);
-                    if (!streamData.isPlaying && streamData.audio && !isDead) {
+                    if (!streamData.isPlaying && streamData.audio) {
                         streamData.isPlaying = true;
                         streamData.audio.play().catch(() => {});
                     }
@@ -674,9 +668,31 @@
             }
             const reader = new FileReader();
             reader.onload = (event) => {
-                pendingCustomTexture = event.target.result;
-                document.getElementById("gmod-modal").style.display = "none";
-                spawnProp('image', pendingCustomTexture);
+                const img = new Image();
+                img.onload = () => {
+                    const compCanvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxDim = 300;
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round((height * maxDim) / width);
+                            width = maxDim;
+                        } else {
+                            width = Math.round((width * maxDim) / height);
+                            height = maxDim;
+                        }
+                    }
+                    compCanvas.width = width;
+                    compCanvas.height = height;
+                    const cCtx = compCanvas.getContext('2d');
+                    cCtx.drawImage(img, 0, 0, width, height);
+                    // 90% compression (0.1 quality JPEG)
+                    pendingCustomTexture = compCanvas.toDataURL('image/jpeg', 0.1);
+                    document.getElementById("gmod-modal").style.display = "none";
+                    spawnProp('image', pendingCustomTexture);
+                };
+                img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         };
@@ -718,7 +734,6 @@
             socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
         }
 
-        // Hold E or Hold Build Icon for 0.5s to open Spawn Menu
         let eHoldTimer = null;
         let buildHoldTimer = null;
 
@@ -1153,12 +1168,11 @@
                 ctx.restore();
             });
 
-            // Render Walls & Props with culling / distance checks to prevent stutter/lag near images
             const camX = renderPlayers[myId] ? renderPlayers[myId].x : myPos.x;
             const camY = renderPlayers[myId] ? renderPlayers[myId].y : myPos.y;
 
             walls.forEach((w, index) => {
-                if (Math.hypot(w.x - camX, w.y - camY) > 2000) return; // distance culling for zero network/render lag
+                if (Math.hypot(w.x - camX, w.y - camY) > 2000) return;
 
                 ctx.save();
                 ctx.translate(w.x, w.y);
@@ -1200,7 +1214,6 @@
                     ctx.fill();
                     ctx.stroke();
                 } else {
-                    // Default wall
                     ctx.fillRect(-60, -10, 120, 20);
                     ctx.strokeRect(-60, -10, 120, 20);
                 }
