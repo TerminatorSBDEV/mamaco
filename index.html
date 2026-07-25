@@ -20,14 +20,15 @@
         #right-joystick { position: absolute; bottom: 40px; right: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none; z-index: 10; }
         #right-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; pointer-events: none; }
 
-        #action-btns { position: absolute; bottom: 40px; right: 180px; display: flex; gap: 10px; z-index: 10; }
+        #action-btns { position: absolute; bottom: 40px; right: 210px; display: flex; gap: 10px; z-index: 10; }
         .action-btn { width: 55px; height: 55px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; cursor: pointer; color: #fff; }
         
-        .mob-weapon-btn { position: absolute; bottom: 105px; width: 50px; height: 50px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; display: none; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; cursor: pointer; z-index: 10; color: #fff; }
-        #mob-w1 { right: 180px; }
-        #mob-w2 { right: 238px; }
-        #mob-w3 { right: 296px; }
-        #mob-w4 { right: 354px; display: none; }
+        .mob-weapon-btn { position: absolute; bottom: 105px; width: 48px; height: 48px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; display: none; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; cursor: pointer; z-index: 10; color: #fff; }
+        #mob-w1 { right: 210px; }
+        #mob-w2 { right: 264px; }
+        #mob-w3 { right: 318px; }
+        #mob-w4 { right: 372px; }
+        #mob-w5 { right: 426px; display: none; }
         .mob-weapon-btn.active { background: rgba(56, 189, 248, 0.4); border-color: #38bdf8; }
 
         /* Floating Chat Box */
@@ -57,7 +58,7 @@
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
-    <div id="controls-hint">E: Wall | Y: Chat | H: Shop | R: Radio | 1-4: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
+    <div id="controls-hint">E: Wall | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
     
     <div id="chat-box">
         <div id="chat-messages"></div>
@@ -78,6 +79,7 @@
     <div id="mob-w2" class="mob-weapon-btn">W2</div>
     <div id="mob-w3" class="mob-weapon-btn">W3</div>
     <div id="mob-w4" class="mob-weapon-btn">W4</div>
+    <div id="mob-w5" class="mob-weapon-btn">W5</div>
 
     <!-- Shop GUI -->
     <div id="shop-modal">
@@ -101,7 +103,7 @@
     <!-- Radio Panel GUI -->
     <div id="radio-modal">
         <div class="modal-title">Radio Panel</div>
-        <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:8px;">Max 10MB audio file.</div>
+        <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:8px;">Audio Streaming Mode (64kbps chunks).</div>
         <input type="file" id="file-radio" accept="audio/*" style="margin-bottom:10px; width:100%;" />
         <div style="display:flex; gap:8px;">
             <button id="btn-radio-play" style="flex:1; background:#22c55e; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Play & Broadcast</button>
@@ -135,6 +137,7 @@
             document.getElementById("mob-w1").style.display = "flex";
             document.getElementById("mob-w2").style.display = "flex";
             document.getElementById("mob-w3").style.display = "flex";
+            document.getElementById("mob-w4").style.display = "flex";
             document.getElementById("controls-hint").style.display = "none";
         }
 
@@ -160,7 +163,8 @@
             1: { name: "Rifle", rate: 200 },
             2: { name: "SMG", rate: 50 },
             3: { name: "Sniper", rate: 2500 },
-            4: { name: "PhysGun", rate: 100 }
+            4: { name: "Shotgun", rate: 1000 },
+            5: { name: "PhysGun", rate: 100 }
         };
 
         const keys = { w: false, a: false, s: false, d: false };
@@ -207,6 +211,14 @@
                 osc.connect(gain);
                 osc.start(now);
                 osc.stop(now + 0.4);
+            } else if (type === 'shotgun') {
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+                osc.connect(gain);
+                osc.start(now);
+                osc.stop(now + 0.3);
             } else if (type === 'hit_wall') {
                 const osc = audioCtx.createOscillator();
                 osc.type = 'square';
@@ -234,23 +246,15 @@
             }
         }
 
-        // Chunk-by-Chunk Audio Streaming System
+        // Full-length audio streaming via MediaStream Destination without 5s cap
         async function prepareAndBroadcastAudio(file, broadcastType) {
             if (!file) return;
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-            const offlineCtx = new OfflineAudioContext(1, audioBuffer.sampleRate * 5, audioBuffer.sampleRate);
-            const source = offlineCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(offlineCtx.destination);
-            source.start(0);
-
-            const renderedBuffer = await offlineCtx.startRendering();
             const streamDest = audioCtx.createMediaStreamDestination();
-            
             const playerNode = audioCtx.createBufferSource();
-            playerNode.buffer = renderedBuffer;
+            playerNode.buffer = audioBuffer;
             playerNode.connect(audioCtx.destination);
             playerNode.connect(streamDest);
 
@@ -273,14 +277,13 @@
                 socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: null, isLast: true } });
             };
 
-            recorder.start(1000); // 1s chunks
+            recorder.start(1000); // 1s intervals per chunk
             playerNode.start(0);
             playerNode.onended = () => {
                 if (recorder.state === "recording") recorder.stop();
             };
         }
 
-        // Incoming audio streaming storage
         const incomingAudioStreams = {};
 
         socket.on("connect", () => {
@@ -309,6 +312,7 @@
                 for (let id in serverPlayers) {
                     const sp = serverPlayers[id];
                     if (id === myId) {
+                        let prevHp = myHp;
                         myHp = sp.hp;
                         myPos.x = sp.x;
                         myPos.y = sp.y;
@@ -319,6 +323,11 @@
                         document.getElementById("pts").innerText = myPoints;
                         document.getElementById("shop-pts").innerText = myPoints;
                         updateShopUI();
+
+                        if (prevHp > 0 && myHp <= 0 && myItems.deathSound) {
+                            // If player has custom death sound configured, broadcast it on death
+                            if (localDeathFile) prepareAndBroadcastAudio(localDeathFile, "death");
+                        }
 
                         if (myHp <= 0 && !isDead) {
                             isDead = true;
@@ -422,6 +431,9 @@
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
+        let localDeathFile = null;
+        let localRadioFile = null;
+
         function updateShopUI() {
             const btnDeath = document.getElementById("btn-buy-death");
             if (myItems.deathSound) {
@@ -446,9 +458,9 @@
 
             const btnPhys = document.getElementById("btn-buy-phys");
             if (myItems.physGun) {
-                btnPhys.innerText = "OWNED | Press 4 to Equip";
+                btnPhys.innerText = "OWNED | Press 5 to Equip";
                 btnPhys.disabled = false;
-                document.getElementById("mob-w4").style.display = "flex";
+                document.getElementById("mob-w5").style.display = "flex";
             } else {
                 btnPhys.disabled = myPoints < 500;
             }
@@ -478,7 +490,7 @@
         document.getElementById("file-death").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            prepareAndBroadcastAudio(file, "death");
+            localDeathFile = file;
         };
 
         document.getElementById("file-radio").onchange = (e) => {
@@ -487,7 +499,6 @@
             localRadioFile = file;
         };
 
-        let localRadioFile = null;
         document.getElementById("btn-radio-play").onclick = () => {
             if (localRadioFile) {
                 prepareAndBroadcastAudio(localRadioFile, "radio");
@@ -511,7 +522,7 @@
         }
 
         function setWeapon(wId) {
-            if (wId === 4 && !myItems.physGun) return;
+            if (wId === 5 && !myItems.physGun) return;
             currentWeapon = wId;
             document.getElementById("wname").innerText = weaponStats[wId].name;
             document.querySelectorAll(".mob-weapon-btn").forEach(btn => btn.classList.remove("active"));
@@ -540,6 +551,7 @@
                 if (e.key === '2') setWeapon(2);
                 if (e.key === '3') setWeapon(3);
                 if (e.key === '4') setWeapon(4);
+                if (e.key === '5') setWeapon(5);
             }
 
             if (!chatOpen) {
@@ -566,6 +578,7 @@
         document.getElementById("mob-w2").onclick = () => setWeapon(2);
         document.getElementById("mob-w3").onclick = () => setWeapon(3);
         document.getElementById("mob-w4").onclick = () => setWeapon(4);
+        document.getElementById("mob-w5").onclick = () => setWeapon(5);
 
         function sendChat() {
             const text = chatInput.value.trim();
@@ -587,14 +600,14 @@
             if (chatOpen || isDead) return;
             if (e.button === 2) {
                 isMouseDown = true;
-                if (currentWeapon === 4) startPhysGunDrag();
+                if (currentWeapon === 5) startPhysGunDrag();
                 else tryShoot();
             }
         });
         window.addEventListener("mouseup", (e) => {
             if (e.button === 2) {
                 isMouseDown = false;
-                if (currentWeapon === 4) stopPhysGunDrag();
+                if (currentWeapon === 5) stopPhysGunDrag();
             }
         });
         window.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -709,12 +722,12 @@
             if (isDead || chatOpen) return;
             const touch = e.touches[0];
             if (touch.clientX > window.innerWidth - 220 && touch.clientY > window.innerHeight - 150) return;
-            if (touch.clientX < 180 && touch.clientY > canvas.height - 180) return; // left joystick area
+            if (touch.clientX < 180 && touch.clientY > canvas.height - 180) return;
 
             mousePos.x = touch.clientX;
             mousePos.y = touch.clientY;
 
-            if (currentWeapon === 4) {
+            if (currentWeapon === 5) {
                 physTouchActive = true;
                 physHoldTimeout = setTimeout(() => {
                     if (physTouchActive) {
@@ -738,7 +751,7 @@
                 physHoldTimeout = null;
             }
             physTouchActive = false;
-            if (isMouseDown && currentWeapon === 4) {
+            if (isMouseDown && currentWeapon === 5) {
                 stopPhysGunDrag();
             }
             isMouseDown = false;
@@ -796,11 +809,11 @@
                     aimAngle = Math.atan2(mousePos.y - screenCenterY, mousePos.x - screenCenterX);
                 }
 
-                if ((isMouseDown && currentWeapon !== 4) || isAimShooting) {
+                if ((isMouseDown && currentWeapon !== 5) || isAimShooting) {
                     tryShoot();
                 }
 
-                if (currentWeapon === 4 && isMouseDown && physTarget) {
+                if (currentWeapon === 5 && isMouseDown && physTarget) {
                     const targetWorldX = myPos.x + (mousePos.x - screenCenterX);
                     const targetWorldY = myPos.y + (mousePos.y - screenCenterY);
                     socket.emit("RemoteEvent", { 
@@ -976,6 +989,11 @@
                     ctx.fillStyle = "#ef4444";
                     ctx.fillRect(15, -9, 10, 5);
                 } else if (wType === 4) {
+                    ctx.fillStyle = "#b45309";
+                    ctx.fillRect(3, -5, 30, 10);
+                    ctx.fillStyle = "#d97706";
+                    ctx.fillRect(12, -7, 12, 14);
+                } else if (wType === 5) {
                     ctx.fillStyle = "#0284c7";
                     ctx.fillRect(2, -4, 30, 8);
                     ctx.fillStyle = "#00ffff";
