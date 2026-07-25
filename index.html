@@ -39,11 +39,17 @@
         #chat-input { width: 93%; padding: 6px; background: rgba(15, 23, 42, 0.9); border: 1px solid #38bdf8; color: #fff; border-radius: 4px; font-size: 0.85rem; outline: none; }
 
         /* Shop & Radio Modals */
-        #shop-modal, #radio-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
+        #shop-modal, #radio-modal, #prop-menu { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
         .modal-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; text-align: center; }
         .shop-item { margin-bottom: 12px; padding: 8px; background: #1e293b; border-radius: 6px; }
         .shop-item button { width: 100%; padding: 6px; margin-top: 6px; background: #38bdf8; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #0f172a; }
         .shop-item button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+
+        /* GMod Spawn Menu */
+        #prop-menu { width: 320px; background: #1e1e1e; border: 2px solid #3c3c3c; color: #fff; }
+        .prop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+        .prop-option { background: #2d2d2d; padding: 8px; text-align: center; cursor: pointer; border-radius: 4px; border: 1px solid #444; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .prop-option:hover { background: #3d3d3d; border-color: #38bdf8; }
 
         #minimap-container { position: absolute; top: 10px; right: 10px; width: 150px; height: 150px; background: rgba(15, 23, 42, 0.8); border: 2px solid #475569; border-radius: 8px; overflow: hidden; pointer-events: none; z-index: 10; }
         #minimapCanvas { width: 100%; height: 100%; display: block; }
@@ -58,7 +64,7 @@
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
-    <div id="controls-hint">E: Wall | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
+    <div id="controls-hint">Hold E: Spawn Menu | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
     
     <div id="chat-box">
         <div id="chat-messages"></div>
@@ -112,6 +118,40 @@
         <button onclick="document.getElementById('radio-modal').style.display='none'" style="width:100%; background:#475569; border:none; color:white; padding:6px; border-radius:4px; margin-top:10px; cursor:pointer;">Close</button>
     </div>
 
+    <!-- GMod Spawn Menu -->
+    <div id="prop-menu">
+        <div class="modal-title" style="border-color:#444;">Spawn Menu (Props)</div>
+        <div class="prop-grid">
+            <div class="prop-option" onclick="spawnPropSelection('wall')">
+                <canvas width="40" height="30" id="icon-wall"></canvas>
+                <div style="font-size:0.75rem; margin-top:4px;">Wall</div>
+            </div>
+            <div class="prop-option" onclick="spawnPropSelection('square')">
+                <canvas width="30" height="30" id="icon-square"></canvas>
+                <div style="font-size:0.75rem; margin-top:4px;">Square</div>
+            </div>
+            <div class="prop-option" onclick="spawnPropSelection('triangle')">
+                <canvas width="30" height="30" id="icon-triangle"></canvas>
+                <div style="font-size:0.75rem; margin-top:4px;">Triangle</div>
+            </div>
+            <div class="prop-option" onclick="spawnPropSelection('circle')">
+                <canvas width="30" height="30" id="icon-circle"></canvas>
+                <div style="font-size:0.75rem; margin-top:4px;">Circle</div>
+            </div>
+            <div class="prop-option" onclick="triggerCustomImageSelect()">
+                <div style="font-size:0.6rem; font-weight:bold; color:#fff; text-align:center;">Your Image</div>
+            </div>
+        </div>
+        <div style="font-size:0.8rem; margin-bottom:6px;">Color:</div>
+        <div style="display:flex; gap:6px; margin-bottom:12px; font-size:0.8rem;">
+            <div>Red: <input type="number" id="prop-r" min="0" max="255" value="0" style="width:45px; background:#222; color:#fff; border:1px solid #444;"></div>
+            <div>Green: <input type="number" id="prop-g" min="0" max="255" value="0" style="width:45px; background:#222; color:#fff; border:1px solid #444;"></div>
+            <div>Blue: <input type="number" id="prop-b" min="0" max="255" value="0" style="width:45px; background:#222; color:#fff; border:1px solid #444;"></div>
+        </div>
+        <input type="file" id="prop-file-input" accept="image/png, image/jpeg" style="display:none;" />
+        <button onclick="document.getElementById('prop-menu').style.display='none'" style="width:100%; background:#c53030; border:none; color:white; padding:6px; border-radius:4px; cursor:pointer;">Close</button>
+    </div>
+
     <div id="minimap-container">
         <canvas id="minimapCanvas" width="150" height="150"></canvas>
     </div>
@@ -158,6 +198,8 @@
         let currentWeapon = 1;
         let isMouseDown = false;
         let physTarget = null;
+        let customImageTextureSrc = null;
+        const loadedImages = {};
 
         const weaponStats = {
             1: { name: "Rifle", rate: 200 },
@@ -186,7 +228,6 @@
             const now = audioCtx.currentTime;
             const gain = audioCtx.createGain();
             
-            // Spatial attenuation
             let volume = 1;
             if (posX !== undefined && posY !== undefined) {
                 const dist = Math.hypot(myPos.x - posX, myPos.y - posY);
@@ -256,7 +297,6 @@
             }
         }
 
-        // Full-length audio streaming without local double-play (removed client-sided audio)
         let activeRecorder = null;
         let activePlayerNode = null;
 
@@ -269,7 +309,6 @@
             const playerNode = audioCtx.createBufferSource();
             activePlayerNode = playerNode;
             playerNode.buffer = audioBuffer;
-            // DO NOT connect to audioCtx.destination locally so sender doesn't hear double play!
             playerNode.connect(streamDest);
 
             const recorder = new MediaRecorder(streamDest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 });
@@ -292,27 +331,20 @@
                 socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: null, isLast: true } });
             };
 
-            recorder.start(1000); // 1s intervals per chunk
+            recorder.start(1000);
             playerNode.start(0);
             playerNode.onended = () => {
                 if (recorder.state === "recording") recorder.stop();
             };
         }
 
-        function stopAllAudioStreams() {
+        function stopOutgoingAudio() {
             if (activeRecorder && activeRecorder.state === "recording") {
                 try { activeRecorder.stop(); } catch(e) {}
             }
             if (activePlayerNode) {
                 try { activePlayerNode.stop(); } catch(e) {}
                 activePlayerNode = null;
-            }
-            for (let sId in incomingAudioStreams) {
-                const st = incomingAudioStreams[sId];
-                if (st && st.audio) {
-                    st.audio.pause();
-                    st.audio.src = "";
-                }
             }
         }
 
@@ -358,7 +390,7 @@
                         updateShopUI();
 
                         if (prevHp > 0 && myHp <= 0) {
-                            stopAllAudioStreams();
+                            stopOutgoingAudio();
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -390,12 +422,6 @@
                 };
             } else if (pkt.type === "sfx") {
                 playSfx(pkt.data.sfxType, pkt.data.x, pkt.data.y);
-            } else if (pkt.type === "medkit_sfx") {
-                // Base64 medkit sound execution point
-                try {
-                    const audio = new Audio(pkt.data.base64);
-                    audio.play().catch(()=>{});
-                } catch(e) {}
             } else if (pkt.type === "audio_chunk_receive") {
                 const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
                 
@@ -438,7 +464,6 @@
             }
         });
 
-        // Spatial volume updates for incoming audio streams
         setInterval(() => {
             for (let sId in incomingAudioStreams) {
                 const st = incomingAudioStreams[sId];
@@ -562,7 +587,7 @@
 
         document.getElementById("btn-radio-play").onclick = () => {
             if (localRadioFile) {
-                stopAllAudioStreams();
+                stopOutgoingAudio();
                 prepareAndBroadcastAudio(localRadioFile, "radio");
                 document.getElementById("radio-modal").style.display = "none";
             } else {
@@ -570,7 +595,7 @@
             }
         };
         document.getElementById("btn-radio-stop").onclick = () => {
-            stopAllAudioStreams();
+            stopOutgoingAudio();
             document.getElementById("radio-modal").style.display = "none";
         };
 
@@ -595,6 +620,15 @@
             socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
         }
 
+        // Spawn Menu Logic & Hold E / Build Button (0.5s)
+        let eHoldTimer = null;
+        let isHoldingE = false;
+
+        function openPropMenu() {
+            if (chatOpen || isDead) return;
+            document.getElementById("prop-menu").style.display = "block";
+        }
+
         window.addEventListener("keydown", (e) => {
             if (e.key.toLowerCase() === 'y' && !chatOpen) {
                 e.preventDefault();
@@ -602,7 +636,12 @@
             } else if (e.key === 'Enter' && chatOpen) {
                 sendChat();
             } else if (e.key.toLowerCase() === 'e' && !chatOpen && !isDead) {
-                buildWall();
+                if (!isHoldingE) {
+                    isHoldingE = true;
+                    eHoldTimer = setTimeout(() => {
+                        openPropMenu();
+                    }, 500);
+                }
             } else if (e.key.toLowerCase() === 'h' && !chatOpen) {
                 const modal = document.getElementById("shop-modal");
                 modal.style.display = modal.style.display === "block" ? "none" : "block";
@@ -626,6 +665,13 @@
         });
 
         window.addEventListener("keyup", (e) => {
+            if (e.key.toLowerCase() === 'e') {
+                isHoldingE = false;
+                if (eHoldTimer) {
+                    clearTimeout(eHoldTimer);
+                    eHoldTimer = null;
+                }
+            }
             if (!chatOpen) {
                 if (e.key.toLowerCase() === 'w') keys.w = false;
                 if (e.key.toLowerCase() === 'a') keys.a = false;
@@ -635,13 +681,91 @@
         });
 
         document.getElementById("chat-btn").onclick = toggleChat;
-        document.getElementById("build-btn").onclick = () => { if (!isDead && !chatOpen) buildWall(); };
+        
+        let buildHoldTimer = null;
+        const buildBtnEl = document.getElementById("build-btn");
+        buildBtnEl.addEventListener("touchstart", () => {
+            if (isDead || chatOpen) return;
+            buildHoldTimer = setTimeout(() => {
+                openPropMenu();
+            }, 500);
+        });
+        buildBtnEl.addEventListener("touchend", () => {
+            if (buildHoldTimer) {
+                clearTimeout(buildHoldTimer);
+                buildHoldTimer = null;
+            }
+        });
 
         document.getElementById("mob-w1").onclick = () => setWeapon(1);
         document.getElementById("mob-w2").onclick = () => setWeapon(2);
         document.getElementById("mob-w3").onclick = () => setWeapon(3);
         document.getElementById("mob-w4").onclick = () => setWeapon(4);
         document.getElementById("mob-w5").onclick = () => setWeapon(5);
+
+        function spawnPropSelection(propType) {
+            document.getElementById("prop-menu").style.display = "none";
+            const now = Date.now();
+            if (now - lastBuild < 1000) return;
+            lastBuild = now;
+
+            const r = parseInt(document.getElementById("prop-r").value) || 0;
+            const g = parseInt(document.getElementById("prop-g").value) || 0;
+            const b = parseInt(document.getElementById("prop-b").value) || 0;
+
+            socket.emit("RemoteEvent", { 
+                type: "spawn_prop", 
+                data: { 
+                    id: myId, 
+                    propType, 
+                    angle: aimAngle, 
+                    color: { r, g, b }, 
+                    imgData: null 
+                } 
+            });
+        }
+
+        function triggerCustomImageSelect() {
+            document.getElementById("prop-file-input").click();
+        }
+
+        document.getElementById("prop-file-input").onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 100 * 1024) {
+                alert("Image size must be lower than 100kb!");
+                return;
+            }
+            if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+                alert("Please choose a PNG or JPEG image.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                customImageTextureSrc = event.target.result;
+                document.getElementById("prop-menu").style.display = "none";
+                
+                const now = Date.now();
+                if (now - lastBuild < 1000) return;
+                lastBuild = now;
+
+                const r = parseInt(document.getElementById("prop-r").value) || 0;
+                const g = parseInt(document.getElementById("prop-g").value) || 0;
+                const b = parseInt(document.getElementById("prop-b").value) || 0;
+
+                socket.emit("RemoteEvent", { 
+                    type: "spawn_prop", 
+                    data: { 
+                        id: myId, 
+                        propType: 'image', 
+                        angle: aimAngle, 
+                        color: { r, g, b }, 
+                        imgData: customImageTextureSrc 
+                    } 
+                });
+            };
+            reader.readAsDataURL(file);
+        };
 
         function sendChat() {
             const text = chatInput.value.trim();
@@ -675,7 +799,6 @@
         });
         window.addEventListener("contextmenu", (e) => e.preventDefault());
 
-        // Left Joystick (Movement)
         const joystickEl = document.getElementById("joystick");
         const stickEl = document.getElementById("stick");
         let joyCenter = { x: 0, y: 0 };
@@ -722,7 +845,6 @@
             }
         });
 
-        // Right Joystick (Aiming & Shooting when pulled all the way out)
         const rightJoystickEl = document.getElementById("right-joystick");
         const rightStickEl = document.getElementById("right-stick");
         let rightJoyCenter = { x: 0, y: 0 };
@@ -758,12 +880,7 @@
 
             rightStickEl.style.transform = `translate(${Math.cos(angle)*clampedDist}px, ${Math.sin(angle)*clampedDist}px)`;
             aimAngle = angle;
-
-            if (dist > 45) {
-                isAimShooting = true;
-            } else {
-                isAimShooting = false;
-            }
+            isAimShooting = dist > 45;
         }, { passive: true });
 
         window.addEventListener("touchend", (e) => {
@@ -777,7 +894,6 @@
             }
         });
 
-        // Canvas touch handling for Physics Gun (Long press 0.3s)
         let physHoldTimeout = null;
         let physTouchActive = false;
 
@@ -827,14 +943,6 @@
             lastShot = now;
 
             socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
-        }
-
-        function buildWall() {
-            const now = Date.now();
-            if (now - lastBuild < 1000) return;
-            lastBuild = now;
-
-            socket.emit("RemoteEvent", { type: "build_wall", data: { id: myId, angle: aimAngle } });
         }
 
         function startPhysGunDrag() {
@@ -942,7 +1050,6 @@
                 mCtx.fillRect(w.x * scale - 1, w.y * scale - 1, 2, 2);
             });
 
-            // Draw medkits on minimap as green plus signs
             mCtx.fillStyle = "#22c55e";
             mCtx.font = "bold 10px sans-serif";
             mCtx.textAlign = "center";
@@ -996,7 +1103,6 @@
             ctx.lineWidth = 4;
             ctx.strokeRect(0, 0, 3000, 3000);
 
-            // Draw medkits on main canvas
             medkits.forEach(mk => {
                 ctx.save();
                 ctx.translate(mk.x, mk.y);
@@ -1017,7 +1123,7 @@
             walls.forEach((w, index) => {
                 ctx.save();
                 ctx.translate(w.x, w.y);
-                ctx.rotate(w.angle + Math.PI / 2);
+                ctx.rotate(w.angle + (w.type === 'square' || w.type === 'circle' ? 0 : Math.PI / 2));
 
                 if (physTarget && physTarget.type === 'wall' && physTarget.wallIndex === index) {
                     ctx.strokeStyle = "#00ffff";
@@ -1027,9 +1133,47 @@
                     ctx.lineWidth = 2;
                 }
 
-                ctx.fillStyle = "#334155";
-                ctx.fillRect(-60, -10, 120, 20);
-                ctx.strokeRect(-60, -10, 120, 20);
+                const propColor = w.color ? `rgb(${w.color.r}, ${w.color.g}, ${w.color.b})` : "#334155";
+                ctx.fillStyle = propColor;
+
+                if (w.type === 'square') {
+                    ctx.fillRect(-20, -20, 40, 40);
+                    ctx.strokeRect(-20, -20, 40, 40);
+                } else if (w.type === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                } else if (w.type === 'triangle') {
+                    ctx.beginPath();
+                    ctx.moveTo(0, -20);
+                    ctx.lineTo(-20, 20);
+                    ctx.lineTo(20, 20);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                } else if (w.type === 'image') {
+                    if (w.imgData) {
+                        if (!loadedImages[w.imgData]) {
+                            const img = new Image();
+                            img.src = w.imgData;
+                            loadedImages[w.imgData] = img;
+                        }
+                        const imgObj = loadedImages[w.imgData];
+                        if (imgObj.complete) {
+                            ctx.drawImage(imgObj, -20, -20, 40, 40);
+                        } else {
+                            ctx.fillRect(-20, -20, 40, 40);
+                        }
+                    } else {
+                        ctx.fillRect(-20, -20, 40, 40);
+                    }
+                    ctx.strokeRect(-20, -20, 40, 40);
+                } else {
+                    // Default wall
+                    ctx.fillRect(-60, -10, 120, 20);
+                    ctx.strokeRect(-60, -10, 120, 20);
+                }
                 ctx.restore();
             });
 
@@ -1120,6 +1264,41 @@
             ctx.restore();
             drawMinimap();
         }
+
+        // Initialize Spawn Menu Icons
+        function initSpawnMenuIcons() {
+            const drawOnCanvas = (id, drawFn) => {
+                const c = document.getElementById(id);
+                if (!c) return;
+                const cCtx = c.getContext('2d');
+                cCtx.clearRect(0, 0, c.width, c.height);
+                cCtx.fillStyle = "#888";
+                cCtx.strokeStyle = "#fff";
+                cCtx.lineWidth = 1;
+                drawFn(cCtx, c.width, c.height);
+            };
+
+            drawOnCanvas('icon-wall', (cCtx, w, h) => {
+                cCtx.fillRect(w/2 - 16, h/2 - 4, 32, 8);
+            });
+            drawOnCanvas('icon-square', (cCtx, w, h) => {
+                cCtx.fillRect(w/2 - 10, h/2 - 10, 20, 20);
+            });
+            drawOnCanvas('icon-triangle', (cCtx, w, h) => {
+                cCtx.beginPath();
+                cCtx.moveTo(w/2, h/2 - 10);
+                cCtx.lineTo(w/2 - 10, h/2 + 10);
+                cCtx.lineTo(w/2 + 10, h/2 + 10);
+                cCtx.closePath();
+                cCtx.fill();
+            });
+            drawOnCanvas('icon-circle', (cCtx, w, h) => {
+                cCtx.beginPath();
+                cCtx.arc(w/2, h/2, 10, 0, Math.PI * 2);
+                cCtx.fill();
+            });
+        }
+        setTimeout(initSpawnMenuIcons, 200);
 
         function loop() {
             update();
