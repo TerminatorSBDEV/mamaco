@@ -38,6 +38,11 @@
         #chat-container { display: none; padding: 6px; background: rgba(30, 41, 59, 0.9); }
         #chat-input { width: 93%; padding: 6px; background: rgba(15, 23, 42, 0.9); border: 1px solid #38bdf8; color: #fff; border-radius: 4px; font-size: 0.85rem; outline: none; }
 
+        @media (max-width: 768px) {
+            #chat-box { width: 200px; height: 130px; top: 60px; font-size: 0.75rem; }
+            #chat-input { font-size: 0.75rem; padding: 4px; }
+        }
+
         /* Shop, Radio & GMod Prop Modals */
         #shop-modal, #radio-modal, #gmod-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
         .modal-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; text-align: center; }
@@ -58,9 +63,17 @@
 
         #minimap-container { position: absolute; top: 10px; right: 10px; width: 150px; height: 150px; background: rgba(15, 23, 42, 0.8); border: 2px solid #475569; border-radius: 8px; overflow: hidden; pointer-events: none; z-index: 10; }
         #minimapCanvas { width: 100%; height: 100%; display: block; }
+        
+        #kick-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.95); z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; color: #ef4444; font-size: 1.5rem; font-weight: bold; text-align: center; padding: 20px; }
+        #kick-overlay button { margin-top: 20px; background: #38bdf8; border: none; color: #0f172a; padding: 10px 20px; border-radius: 6px; font-size: 1rem; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
+    <div id="kick-overlay">
+        <div id="kick-message">You have been disconnected from the server.</div>
+        <button onclick="location.reload()">Refresh Page</button>
+    </div>
+
     <div id="ui">
         HP: <span id="hp">100</span> | Points: <span id="pts">0</span> | Gun: <span id="wname">Rifle</span> | <span id="status">Connecting...</span>
     </div>
@@ -200,12 +213,6 @@
         const link = "https://given-exceed-analyses-optics.trycloudflare.com";
         const key = "146cf8ce56";
         const socket = io(link, { auth: { token: "default_key" } });
-
-        socket.on('kick', (data) => {
-            alert(data.reason || "You have been kicked from the server.");
-            socket.disconnect();
-            document.getElementById("status").innerText = "Disconnected (Kicked)";
-        });
 
         let myId = Math.random().toString(36).substring(2, 7);
         let myColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
@@ -396,6 +403,12 @@
             socket.emit("RemoteEvent", { type: "player_join", data: { id: myId, color: myColor, x: myPos.x, y: myPos.y, weapon: currentWeapon } });
         });
 
+        socket.on("kick", (data) => {
+            document.getElementById("kick-message").innerText = data.reason || "You have been disconnected from the server.";
+            document.getElementById("kick-overlay").style.display = "flex";
+            socket.disconnect();
+        });
+
         socket.on("RemoteEvent", (pkt) => {
             if (pkt.type === "state_update") {
                 const serverPlayers = pkt.data.players;
@@ -513,11 +526,7 @@
                     if (senderPlayer) {
                         const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
                         const maxDist = 1500;
-                        if (dist > maxDist) {
-                            st.audio.volume = 0;
-                        } else {
-                            st.audio.volume = Math.max(0, 1 - (dist / maxDist));
-                        }
+                        st.audio.volume = dist > maxDist ? 0 : Math.max(0, 1 - (dist / maxDist));
                     }
                 }
             }
@@ -923,7 +932,6 @@
             }
         });
 
-        let physHoldTimeout = null;
         let physTouchActive = false;
 
         window.addEventListener("touchstart", (e) => {
@@ -937,12 +945,8 @@
 
             if (currentWeapon === 5) {
                 physTouchActive = true;
-                physHoldTimeout = setTimeout(() => {
-                    if (physTouchActive) {
-                        isMouseDown = true;
-                        startPhysGunDrag();
-                    }
-                }, 300);
+                isMouseDown = true;
+                startPhysGunDrag();
             }
         });
 
@@ -954,10 +958,6 @@
         }, { passive: true });
 
         window.addEventListener("touchend", () => {
-            if (physHoldTimeout) {
-                clearTimeout(physHoldTimeout);
-                physHoldTimeout = null;
-            }
             physTouchActive = false;
             if (isMouseDown && currentWeapon === 5) {
                 stopPhysGunDrag();
@@ -1112,9 +1112,13 @@
                     renderPlayers[id].x += (sp.x - renderPlayers[id].x) * 0.3;
                     renderPlayers[id].y += (sp.y - renderPlayers[id].y) * 0.3;
                     
-                    // Latency Hide: Linear lerp for gun/player rotation
-                    let angleDiff = sp.angle - renderPlayers[id].angle;
-                    renderPlayers[id].angle += Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff)) * 0.35;
+                    // Latency Hide: Linear lerp for rotation angles
+                    let targetAngle = sp.angle;
+                    let currentAngle = renderPlayers[id].angle || 0;
+                    let diff = targetAngle - currentAngle;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    renderPlayers[id].angle = currentAngle + diff * 0.35;
 
                     renderPlayers[id].color = sp.color;
                     renderPlayers[id].hp = sp.hp;
