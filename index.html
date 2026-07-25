@@ -38,18 +38,23 @@
         #chat-container { display: none; padding: 6px; background: rgba(30, 41, 59, 0.9); }
         #chat-input { width: 93%; padding: 6px; background: rgba(15, 23, 42, 0.9); border: 1px solid #38bdf8; color: #fff; border-radius: 4px; font-size: 0.85rem; outline: none; }
 
-        /* Shop & Radio Modals */
-        #shop-modal, #radio-modal, #prop-menu { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
+        /* Shop, Radio & GMod Prop Modals */
+        #shop-modal, #radio-modal, #gmod-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
         .modal-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; text-align: center; }
         .shop-item { margin-bottom: 12px; padding: 8px; background: #1e293b; border-radius: 6px; }
         .shop-item button { width: 100%; padding: 6px; margin-top: 6px; background: #38bdf8; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #0f172a; }
         .shop-item button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
 
-        /* GMod Spawn Menu */
-        #prop-menu { width: 320px; background: #1e1e1e; border: 2px solid #3c3c3c; color: #fff; }
-        .prop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
-        .prop-option { background: #2d2d2d; padding: 8px; text-align: center; cursor: pointer; border-radius: 4px; border: 1px solid #444; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .prop-option:hover { background: #3d3d3d; border-color: #38bdf8; }
+        /* GMod Prop Menu Styles */
+        #gmod-modal { width: 320px; background: #1e293b; border: 2px solid #64748b; }
+        .gmod-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+        .gmod-card { background: #0f172a; border: 2px solid #475569; border-radius: 8px; height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: border-color 0.2s; }
+        .gmod-card:hover { border-color: #38bdf8; }
+        .gmod-preview { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+        .gmod-label { font-size: 0.75rem; color: #cbd5e1; font-weight: bold; }
+        
+        .color-picker-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; background: #0f172a; padding: 8px; border-radius: 6px; font-size: 0.85rem; }
+        .color-picker-row input[type="range"] { width: 130px; }
 
         #minimap-container { position: absolute; top: 10px; right: 10px; width: 150px; height: 150px; background: rgba(15, 23, 42, 0.8); border: 2px solid #475569; border-radius: 8px; overflow: hidden; pointer-events: none; z-index: 10; }
         #minimapCanvas { width: 100%; height: 100%; display: block; }
@@ -78,7 +83,7 @@
     
     <div id="action-btns">
         <div id="chat-btn" class="action-btn">💬</div>
-        <div id="build-btn" class="action-btn">🧱</div>
+        <div id="build-btn" class="action-btn" title="Hold to open Spawn Menu">🧱</div>
     </div>
 
     <div id="mob-w1" class="mob-weapon-btn active">W1</div>
@@ -118,38 +123,49 @@
         <button onclick="document.getElementById('radio-modal').style.display='none'" style="width:100%; background:#475569; border:none; color:white; padding:6px; border-radius:4px; margin-top:10px; cursor:pointer;">Close</button>
     </div>
 
-    <!-- GMod Spawn Menu -->
-    <div id="prop-menu">
-        <div class="modal-title" style="border-color:#444;">Spawn Menu (Props)</div>
-        <div class="prop-grid">
-            <div class="prop-option" onclick="spawnPropSelection('wall')">
-                <canvas width="40" height="30" id="icon-wall"></canvas>
-                <div style="font-size:0.75rem; margin-top:4px;">Wall</div>
+    <!-- GMod Prop Spawn Menu -->
+    <div id="gmod-modal">
+        <div class="modal-title">Spawn Menu</div>
+        <div class="gmod-grid">
+            <div class="gmod-card" onclick="spawnProp('wall')">
+                <div class="gmod-preview"><div style="width:36px; height:12px; background:#64748b; border:1px solid #94a3b8;"></div></div>
+                <div class="gmod-label">Wall</div>
             </div>
-            <div class="prop-option" onclick="spawnPropSelection('square')">
-                <canvas width="30" height="30" id="icon-square"></canvas>
-                <div style="font-size:0.75rem; margin-top:4px;">Square</div>
+            <div class="gmod-card" onclick="spawnProp('square')">
+                <div class="gmod-preview"><div style="width:28px; height:28px; background:#64748b; border:1px solid #94a3b8;"></div></div>
+                <div class="gmod-label">Square</div>
             </div>
-            <div class="prop-option" onclick="spawnPropSelection('triangle')">
-                <canvas width="30" height="30" id="icon-triangle"></canvas>
-                <div style="font-size:0.75rem; margin-top:4px;">Triangle</div>
+            <div class="gmod-card" onclick="spawnProp('triangle')">
+                <div class="gmod-preview">
+                    <div style="width:0; height:0; border-left:16px solid transparent; border-right:16px solid transparent; border-bottom:28px solid #64748b;"></div>
+                </div>
+                <div class="gmod-label">Triangle</div>
             </div>
-            <div class="prop-option" onclick="spawnPropSelection('circle')">
-                <canvas width="30" height="30" id="icon-circle"></canvas>
-                <div style="font-size:0.75rem; margin-top:4px;">Circle</div>
+            <div class="gmod-card" onclick="spawnProp('circle')">
+                <div class="gmod-preview"><div style="width:28px; height:28px; background:#64748b; border-radius:50%; border:1px solid #94a3b8;"></div></div>
+                <div class="gmod-label">Circle</div>
             </div>
-            <div class="prop-option" onclick="triggerCustomImageSelect()">
-                <div style="font-size:0.6rem; font-weight:bold; color:#fff; text-align:center;">Your Image</div>
+            <div class="gmod-card" onclick="triggerCustomImageUpload()" style="grid-column: span 2;">
+                <div class="gmod-preview"><span style="font-size:0.7rem; color:#38bdf8; font-weight:bold;">Your Image</span></div>
+                <div class="gmod-label">Custom Image</div>
             </div>
         </div>
-        <div style="font-size:0.8rem; margin-bottom:6px;">Color:</div>
-        <div style="display:flex; gap:6px; margin-bottom:12px; font-size:0.8rem;">
-            <div>Red: <input type="number" id="prop-r" min="0" max="255" value="0" style="width:45px; background:#222; color:#fff; border:1px solid #444;"></div>
-            <div>Green: <input type="number" id="prop-g" min="0" max="255" value="0" style="width:45px; background:#222; color:#fff; border:1px solid #444;"></div>
-            <div>Blue: <input type="number" id="prop-b" min="0" max="255" value="0" style="width:45px; background:#222; color:#fff; border:1px solid #444;"></div>
+        <input type="file" id="file-custom-prop" accept="image/png, image/jpeg" style="display:none;" />
+        
+        <div class="color-picker-row">
+            <span>Red: <span id="val-r">0</span></span>
+            <input type="range" id="slider-r" min="0" max="255" value="0" />
         </div>
-        <input type="file" id="prop-file-input" accept="image/png, image/jpeg" style="display:none;" />
-        <button onclick="document.getElementById('prop-menu').style.display='none'" style="width:100%; background:#c53030; border:none; color:white; padding:6px; border-radius:4px; cursor:pointer;">Close</button>
+        <div class="color-picker-row">
+            <span>Green: <span id="val-g">0</span></span>
+            <input type="range" id="slider-g" min="0" max="255" value="0" />
+        </div>
+        <div class="color-picker-row">
+            <span>Blue: <span id="val-b">0</span></span>
+            <input type="range" id="slider-b" min="0" max="255" value="0" />
+        </div>
+
+        <button onclick="document.getElementById('gmod-modal').style.display='none'" style="width:100%; background:#ef4444; border:none; color:white; padding:6px; border-radius:4px; margin-top:4px; cursor:pointer;">Close</button>
     </div>
 
     <div id="minimap-container">
@@ -193,13 +209,11 @@
         let myItems = { deathSound: false, radio: false, physGun: false };
         let isDead = false;
         let lastShot = 0;
-        let lastBuild = 0;
+        let lastPropSpawn = 0;
         let aimAngle = 0;
         let currentWeapon = 1;
         let isMouseDown = false;
         let physTarget = null;
-        let customImageTextureSrc = null;
-        const loadedImages = {};
 
         const weaponStats = {
             1: { name: "Rifle", rate: 200 },
@@ -297,6 +311,17 @@
             }
         }
 
+        // Texture cache & loading for performance (prevents network / render lag)
+        const textureCache = {};
+        function getCachedTexture(dataUrl) {
+            if (!dataUrl) return null;
+            if (textureCache[dataUrl]) return textureCache[dataUrl];
+            const img = new Image();
+            img.src = dataUrl;
+            textureCache[dataUrl] = img;
+            return img;
+        }
+
         let activeRecorder = null;
         let activePlayerNode = null;
 
@@ -338,13 +363,20 @@
             };
         }
 
-        function stopOutgoingAudio() {
+        function stopAllAudioStreams() {
             if (activeRecorder && activeRecorder.state === "recording") {
                 try { activeRecorder.stop(); } catch(e) {}
             }
             if (activePlayerNode) {
                 try { activePlayerNode.stop(); } catch(e) {}
                 activePlayerNode = null;
+            }
+            for (let sId in incomingAudioStreams) {
+                const st = incomingAudioStreams[sId];
+                if (st && st.audio) {
+                    st.audio.pause();
+                    st.audio.src = "";
+                }
             }
         }
 
@@ -390,7 +422,7 @@
                         updateShopUI();
 
                         if (prevHp > 0 && myHp <= 0) {
-                            stopOutgoingAudio();
+                            stopAllAudioStreams();
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -398,6 +430,7 @@
 
                         if (myHp <= 0 && !isDead) {
                             isDead = true;
+                            stopAllAudioStreams(); // Stop listening to audio on death
                             setTimeout(() => {
                                 isDead = false;
                                 socket.emit("RemoteEvent", { type: "respawn", data: { id: myId } });
@@ -422,6 +455,11 @@
                 };
             } else if (pkt.type === "sfx") {
                 playSfx(pkt.data.sfxType, pkt.data.x, pkt.data.y);
+            } else if (pkt.type === "medkit_sfx") {
+                try {
+                    const audio = new Audio(pkt.data.base64);
+                    audio.play().catch(()=>{});
+                } catch(e) {}
             } else if (pkt.type === "audio_chunk_receive") {
                 const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
                 
@@ -464,10 +502,15 @@
             }
         });
 
+        // Spatial volume updates and dead audio cutoff
         setInterval(() => {
             for (let sId in incomingAudioStreams) {
                 const st = incomingAudioStreams[sId];
-                if (st && st.audio && st.senderId) {
+                if (st && st.audio) {
+                    if (isDead) {
+                        st.audio.volume = 0;
+                        continue;
+                    }
                     const senderPlayer = players[st.senderId] || renderPlayers[st.senderId];
                     if (senderPlayer) {
                         const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
@@ -490,7 +533,7 @@
                 const nextChunk = streamData.queue.shift();
                 try {
                     streamData.sourceBuffer.appendBuffer(nextChunk);
-                    if (!streamData.isPlaying && streamData.audio) {
+                    if (!streamData.isPlaying && streamData.audio && !isDead) {
                         streamData.isPlaying = true;
                         streamData.audio.play().catch(() => {});
                     }
@@ -587,7 +630,7 @@
 
         document.getElementById("btn-radio-play").onclick = () => {
             if (localRadioFile) {
-                stopOutgoingAudio();
+                stopAllAudioStreams();
                 prepareAndBroadcastAudio(localRadioFile, "radio");
                 document.getElementById("radio-modal").style.display = "none";
             } else {
@@ -595,9 +638,64 @@
             }
         };
         document.getElementById("btn-radio-stop").onclick = () => {
-            stopOutgoingAudio();
+            stopAllAudioStreams();
             document.getElementById("radio-modal").style.display = "none";
         };
+
+        // Color Sliders
+        const sliderR = document.getElementById("slider-r");
+        const sliderG = document.getElementById("slider-g");
+        const sliderB = document.getElementById("slider-b");
+        const valR = document.getElementById("val-r");
+        const valG = document.getElementById("val-g");
+        const valB = document.getElementById("val-b");
+
+        function updateColorVals() {
+            valR.innerText = sliderR.value;
+            valG.innerText = sliderG.value;
+            valB.innerText = sliderB.value;
+        }
+        sliderR.oninput = updateColorVals;
+        sliderG.oninput = updateColorVals;
+        sliderB.oninput = updateColorVals;
+
+        let pendingCustomTexture = null;
+
+        function triggerCustomImageUpload() {
+            document.getElementById("file-custom-prop").click();
+        }
+
+        document.getElementById("file-custom-prop").onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 102400) {
+                alert("Image size must be lower than 100kb!");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                pendingCustomTexture = event.target.result;
+                document.getElementById("gmod-modal").style.display = "none";
+                spawnProp('image', pendingCustomTexture);
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function spawnProp(type, textureData = null) {
+            const now = Date.now();
+            if (now - lastPropSpawn < 1000) return;
+            lastPropSpawn = now;
+
+            const r = parseInt(sliderR.value);
+            const g = parseInt(sliderG.value);
+            const b = parseInt(sliderB.value);
+
+            socket.emit("RemoteEvent", { 
+                type: "spawn_prop", 
+                data: { id: myId, angle: aimAngle, propType: type, r, g, b, texture: textureData } 
+            });
+            document.getElementById("gmod-modal").style.display = "none";
+        }
 
         const chatInput = document.getElementById("chat-input");
         const chatContainer = document.getElementById("chat-container");
@@ -620,14 +718,9 @@
             socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
         }
 
-        // Spawn Menu Logic & Hold E / Build Button (0.5s)
+        // Hold E or Hold Build Icon for 0.5s to open Spawn Menu
         let eHoldTimer = null;
-        let isHoldingE = false;
-
-        function openPropMenu() {
-            if (chatOpen || isDead) return;
-            document.getElementById("prop-menu").style.display = "block";
-        }
+        let buildHoldTimer = null;
 
         window.addEventListener("keydown", (e) => {
             if (e.key.toLowerCase() === 'y' && !chatOpen) {
@@ -636,10 +729,10 @@
             } else if (e.key === 'Enter' && chatOpen) {
                 sendChat();
             } else if (e.key.toLowerCase() === 'e' && !chatOpen && !isDead) {
-                if (!isHoldingE) {
-                    isHoldingE = true;
+                if (!eHoldTimer) {
                     eHoldTimer = setTimeout(() => {
-                        openPropMenu();
+                        const modal = document.getElementById("gmod-modal");
+                        modal.style.display = modal.style.display === "block" ? "none" : "block";
                     }, 500);
                 }
             } else if (e.key.toLowerCase() === 'h' && !chatOpen) {
@@ -666,7 +759,6 @@
 
         window.addEventListener("keyup", (e) => {
             if (e.key.toLowerCase() === 'e') {
-                isHoldingE = false;
                 if (eHoldTimer) {
                     clearTimeout(eHoldTimer);
                     eHoldTimer = null;
@@ -682,15 +774,15 @@
 
         document.getElementById("chat-btn").onclick = toggleChat;
         
-        let buildHoldTimer = null;
-        const buildBtnEl = document.getElementById("build-btn");
-        buildBtnEl.addEventListener("touchstart", () => {
+        const buildBtn = document.getElementById("build-btn");
+        buildBtn.addEventListener("touchstart", () => {
             if (isDead || chatOpen) return;
             buildHoldTimer = setTimeout(() => {
-                openPropMenu();
+                const modal = document.getElementById("gmod-modal");
+                modal.style.display = modal.style.display === "block" ? "none" : "block";
             }, 500);
         });
-        buildBtnEl.addEventListener("touchend", () => {
+        buildBtn.addEventListener("touchend", () => {
             if (buildHoldTimer) {
                 clearTimeout(buildHoldTimer);
                 buildHoldTimer = null;
@@ -702,70 +794,6 @@
         document.getElementById("mob-w3").onclick = () => setWeapon(3);
         document.getElementById("mob-w4").onclick = () => setWeapon(4);
         document.getElementById("mob-w5").onclick = () => setWeapon(5);
-
-        function spawnPropSelection(propType) {
-            document.getElementById("prop-menu").style.display = "none";
-            const now = Date.now();
-            if (now - lastBuild < 1000) return;
-            lastBuild = now;
-
-            const r = parseInt(document.getElementById("prop-r").value) || 0;
-            const g = parseInt(document.getElementById("prop-g").value) || 0;
-            const b = parseInt(document.getElementById("prop-b").value) || 0;
-
-            socket.emit("RemoteEvent", { 
-                type: "spawn_prop", 
-                data: { 
-                    id: myId, 
-                    propType, 
-                    angle: aimAngle, 
-                    color: { r, g, b }, 
-                    imgData: null 
-                } 
-            });
-        }
-
-        function triggerCustomImageSelect() {
-            document.getElementById("prop-file-input").click();
-        }
-
-        document.getElementById("prop-file-input").onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            if (file.size > 100 * 1024) {
-                alert("Image size must be lower than 100kb!");
-                return;
-            }
-            if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
-                alert("Please choose a PNG or JPEG image.");
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                customImageTextureSrc = event.target.result;
-                document.getElementById("prop-menu").style.display = "none";
-                
-                const now = Date.now();
-                if (now - lastBuild < 1000) return;
-                lastBuild = now;
-
-                const r = parseInt(document.getElementById("prop-r").value) || 0;
-                const g = parseInt(document.getElementById("prop-g").value) || 0;
-                const b = parseInt(document.getElementById("prop-b").value) || 0;
-
-                socket.emit("RemoteEvent", { 
-                    type: "spawn_prop", 
-                    data: { 
-                        id: myId, 
-                        propType: 'image', 
-                        angle: aimAngle, 
-                        color: { r, g, b }, 
-                        imgData: customImageTextureSrc 
-                    } 
-                });
-            };
-            reader.readAsDataURL(file);
-        };
 
         function sendChat() {
             const text = chatInput.value.trim();
@@ -880,7 +908,12 @@
 
             rightStickEl.style.transform = `translate(${Math.cos(angle)*clampedDist}px, ${Math.sin(angle)*clampedDist}px)`;
             aimAngle = angle;
-            isAimShooting = dist > 45;
+
+            if (dist > 45) {
+                isAimShooting = true;
+            } else {
+                isAimShooting = false;
+            }
         }, { passive: true });
 
         window.addEventListener("touchend", (e) => {
@@ -1120,10 +1153,18 @@
                 ctx.restore();
             });
 
+            // Render Walls & Props with culling / distance checks to prevent stutter/lag near images
+            const camX = renderPlayers[myId] ? renderPlayers[myId].x : myPos.x;
+            const camY = renderPlayers[myId] ? renderPlayers[myId].y : myPos.y;
+
             walls.forEach((w, index) => {
+                if (Math.hypot(w.x - camX, w.y - camY) > 2000) return; // distance culling for zero network/render lag
+
                 ctx.save();
                 ctx.translate(w.x, w.y);
-                ctx.rotate(w.angle + (w.type === 'square' || w.type === 'circle' ? 0 : Math.PI / 2));
+                if (w.type === 'wall') {
+                    ctx.rotate(w.angle + Math.PI / 2);
+                }
 
                 if (physTarget && physTarget.type === 'wall' && physTarget.wallIndex === index) {
                     ctx.strokeStyle = "#00ffff";
@@ -1133,47 +1174,37 @@
                     ctx.lineWidth = 2;
                 }
 
-                const propColor = w.color ? `rgb(${w.color.r}, ${w.color.g}, ${w.color.b})` : "#334155";
+                const propColor = `rgb(${w.r !== undefined ? w.r : 100}, ${w.g !== undefined ? w.g : 116}, ${w.b !== undefined ? w.b : 139})`;
                 ctx.fillStyle = propColor;
 
-                if (w.type === 'square') {
-                    ctx.fillRect(-20, -20, 40, 40);
-                    ctx.strokeRect(-20, -20, 40, 40);
-                } else if (w.type === 'circle') {
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 20, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
+                if (w.type === 'square' || w.type === 'image') {
+                    ctx.fillRect(-25, -25, 50, 50);
+                    ctx.strokeRect(-25, -25, 50, 50);
+                    if (w.type === 'image' && w.texture) {
+                        const img = getCachedTexture(w.texture);
+                        if (img && img.complete) {
+                            ctx.drawImage(img, -25, -25, 50, 50);
+                        }
+                    }
                 } else if (w.type === 'triangle') {
                     ctx.beginPath();
-                    ctx.moveTo(0, -20);
-                    ctx.lineTo(-20, 20);
-                    ctx.lineTo(20, 20);
+                    ctx.moveTo(0, -30);
+                    ctx.lineTo(30, 30);
+                    ctx.lineTo(-30, 30);
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
-                } else if (w.type === 'image') {
-                    if (w.imgData) {
-                        if (!loadedImages[w.imgData]) {
-                            const img = new Image();
-                            img.src = w.imgData;
-                            loadedImages[w.imgData] = img;
-                        }
-                        const imgObj = loadedImages[w.imgData];
-                        if (imgObj.complete) {
-                            ctx.drawImage(imgObj, -20, -20, 40, 40);
-                        } else {
-                            ctx.fillRect(-20, -20, 40, 40);
-                        }
-                    } else {
-                        ctx.fillRect(-20, -20, 40, 40);
-                    }
-                    ctx.strokeRect(-20, -20, 40, 40);
+                } else if (w.type === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 25, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
                 } else {
                     // Default wall
                     ctx.fillRect(-60, -10, 120, 20);
                     ctx.strokeRect(-60, -10, 120, 20);
                 }
+
                 ctx.restore();
             });
 
@@ -1264,41 +1295,6 @@
             ctx.restore();
             drawMinimap();
         }
-
-        // Initialize Spawn Menu Icons
-        function initSpawnMenuIcons() {
-            const drawOnCanvas = (id, drawFn) => {
-                const c = document.getElementById(id);
-                if (!c) return;
-                const cCtx = c.getContext('2d');
-                cCtx.clearRect(0, 0, c.width, c.height);
-                cCtx.fillStyle = "#888";
-                cCtx.strokeStyle = "#fff";
-                cCtx.lineWidth = 1;
-                drawFn(cCtx, c.width, c.height);
-            };
-
-            drawOnCanvas('icon-wall', (cCtx, w, h) => {
-                cCtx.fillRect(w/2 - 16, h/2 - 4, 32, 8);
-            });
-            drawOnCanvas('icon-square', (cCtx, w, h) => {
-                cCtx.fillRect(w/2 - 10, h/2 - 10, 20, 20);
-            });
-            drawOnCanvas('icon-triangle', (cCtx, w, h) => {
-                cCtx.beginPath();
-                cCtx.moveTo(w/2, h/2 - 10);
-                cCtx.lineTo(w/2 - 10, h/2 + 10);
-                cCtx.lineTo(w/2 + 10, h/2 + 10);
-                cCtx.closePath();
-                cCtx.fill();
-            });
-            drawOnCanvas('icon-circle', (cCtx, w, h) => {
-                cCtx.beginPath();
-                cCtx.arc(w/2, h/2, 10, 0, Math.PI * 2);
-                cCtx.fill();
-            });
-        }
-        setTimeout(initSpawnMenuIcons, 200);
 
         function loop() {
             update();
