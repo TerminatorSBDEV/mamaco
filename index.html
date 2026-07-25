@@ -214,6 +214,7 @@
         let currentWeapon = 1;
         let isMouseDown = false;
         let physTarget = null;
+        let lastStateReceiveTime = Date.now();
 
         const weaponStats = {
             1: { name: "Rifle", rate: 200 },
@@ -393,6 +394,27 @@
 
         socket.on("RemoteEvent", (pkt) => {
             if (pkt.type === "state_update") {
+                const nowTime = Date.now();
+                const timeSinceLastState = nowTime - lastStateReceiveTime;
+                lastStateReceiveTime = nowTime;
+
+                // Anti-Delay / Desync Protection System:
+                // If a delay or lag spike > 1500ms occurs, discard stale queued states & audio buffers to synchronize instantly.
+                if (timeSinceLastState > 1500) {
+                    for (let sId in incomingAudioStreams) {
+                        const st = incomingAudioStreams[sId];
+                        if (st && st.queue) {
+                            st.queue = []; // Remove current received queued requests/chunks
+                        }
+                    }
+                    for (let id in pkt.data.players) {
+                        if (renderPlayers[id]) {
+                            renderPlayers[id].x = pkt.data.players[id].x;
+                            renderPlayers[id].y = pkt.data.players[id].y;
+                        }
+                    }
+                }
+
                 const serverPlayers = pkt.data.players;
                 walls = pkt.data.walls || [];
                 medkits = pkt.data.medkits || [];
@@ -687,7 +709,6 @@
                     compCanvas.height = height;
                     const cCtx = compCanvas.getContext('2d');
                     cCtx.drawImage(img, 0, 0, width, height);
-                    // 90% compression (0.1 quality JPEG)
                     pendingCustomTexture = compCanvas.toDataURL('image/jpeg', 0.1);
                     document.getElementById("gmod-modal").style.display = "none";
                     spawnProp('image', pendingCustomTexture);
@@ -740,7 +761,7 @@
                 toggleChat();
             } else if (e.key === 'Enter' && chatOpen) {
                 sendChat();
-            } else if (e.key.toLowerCase() === 'e' && !chatOpen && !isDead) {
+            } else if ((e.key.toLowerCase() === 'e' || e.key === 'E') && !chatOpen && !isDead) {
                 const modal = document.getElementById("gmod-modal");
                 modal.style.display = modal.style.display === "block" ? "none" : "block";
             } else if (e.key.toLowerCase() === 'h' && !chatOpen) {
@@ -805,8 +826,13 @@
             mousePos.y = e.clientY;
         });
 
+        // Updated props menu opening: clicking on mobile, pressing E on PC
         window.addEventListener("mousedown", (e) => {
             if (chatOpen || isDead) return;
+            if (e.button === 0 && isMobile) {
+                const modal = document.getElementById("gmod-modal");
+                modal.style.display = modal.style.display === "block" ? "none" : "block";
+            }
             if (e.button === 2) {
                 isMouseDown = true;
                 if (currentWeapon === 5) startPhysGunDrag();
