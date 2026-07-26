@@ -38,9 +38,10 @@
         #chat-input { width: 93%; padding: 6px; background: rgba(15, 23, 42, 0.9); border: 1px solid #38bdf8; color: #fff; border-radius: 4px; font-size: 0.85rem; outline: none; }
 
         @media (max-width: 768px) {
-            #chat-box { width: 180px; height: 130px; font-size: 0.75rem; }
-            #chat-messages { font-size: 0.75rem; padding: 4px; }
-            #chat-input { font-size: 0.75rem; padding: 4px; }
+            #chat-box { width: 190px; height: 130px; top: 50px; left: 5px; }
+            #chat-messages { font-size: 0.72rem; padding: 4px; }
+            #chat-container { padding: 4px; }
+            #chat-input { font-size: 0.72rem; padding: 4px; width: 90%; }
         }
 
         #shop-modal, #radio-modal, #gmod-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
@@ -86,7 +87,7 @@
     
     <div id="action-btns">
         <div id="chat-btn" class="action-btn">💬</div>
-        <div id="build-btn" class="action-btn" title="Open Spawn Menu">🧱</div>
+        <div id="build-btn" class="action-btn" title="Click to open Spawn Menu">🧱</div>
     </div>
 
     <div id="mob-w1" class="mob-weapon-btn active">W1</div>
@@ -240,6 +241,7 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         function playSfx(type, posX, posY) {
+            if (isKicked) return;
             const now = audioCtx.currentTime;
             const gain = audioCtx.createGain();
             
@@ -326,20 +328,9 @@
         let activePlayerNode = null;
 
         async function prepareAndBroadcastAudio(file, broadcastType) {
-            if (!file) return;
+            if (!file || isKicked) return;
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-            if (broadcastType === 'radio') {
-                if (file.size > 10 * 1024 * 1024 || audioBuffer.duration > 300) {
-                    alert("Radio audio must be less than 10MB and shorter than 5 minutes!");
-                    return;
-                }
-            } else if (broadcastType === 'death') {
-                if (file.size > 5 * 1024 * 1024 || audioBuffer.duration > 10) {
-                    return;
-                }
-            }
 
             const streamDest = audioCtx.createMediaStreamDestination();
             const playerNode = audioCtx.createBufferSource();
@@ -355,7 +346,7 @@
             socket.emit("RemoteEvent", { type: "audio_upload_start", data: { id: myId, sessionId, broadcastType } });
 
             recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) {
+                if (e.data.size > 0 && !isKicked) {
                     e.data.arrayBuffer().then(buf => {
                         socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: buf, isLast: false } });
                         chunkIndex++;
@@ -364,7 +355,9 @@
             };
 
             recorder.onstop = () => {
-                socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: null, isLast: true } });
+                if (!isKicked) {
+                    socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: null, isLast: true } });
+                }
             };
 
             recorder.start(1000);
@@ -391,10 +384,13 @@
             }
         }
 
-        function stopAudioForSender(senderId) {
+        function stopAudioForPlayer(targetId) {
+            if (targetId === myId) {
+                stopAllAudioStreams();
+            }
             for (let sId in incomingAudioStreams) {
                 const st = incomingAudioStreams[sId];
-                if (st && st.senderId === senderId) {
+                if (st && (st.senderId === targetId || targetId === myId)) {
                     if (st.audio) {
                         st.audio.pause();
                         st.audio.src = "";
@@ -410,17 +406,19 @@
             if (!isKicked) socket.emit("join_virtual_server", { key });
         });
 
-        socket.on("kicked", (data) => {
-            isKicked = true;
-            stopAllAudioStreams();
-            socket.disconnect();
-            document.body.innerHTML = `<div style="color:white;text-align:center;margin-top:20vh;font-family:sans-serif;"><h1>Disconnected</h1><p style="color:#ef4444;font-size:1.2rem;">${data && data.reason ? data.reason : 'You were kicked from the server.'}</p><p style="color:#94a3b8;">Please refresh the page to reconnect.</p></div>`;
-        });
-
         socket.on("joined_successfully", () => {
             if (isKicked) return;
             document.getElementById("status").innerText = "Connected";
             socket.emit("RemoteEvent", { type: "player_join", data: { id: myId, color: myColor, x: myPos.x, y: myPos.y, weapon: currentWeapon } });
+        });
+
+        socket.on("kicked", (pkt) => {
+            isKicked = true;
+            stopAllAudioStreams();
+            socket.disconnect();
+            document.getElementById("status").innerText = "KICKED (Refresh to reconnect)";
+            document.getElementById("status").style.color = "#ef4444";
+            alert("You were kicked: " + (pkt.reason || "Kicked from server"));
         });
 
         socket.on("RemoteEvent", (pkt) => {
@@ -456,7 +454,6 @@
 
                         if (prevHp > 0 && myHp <= 0) {
                             stopAllAudioStreams();
-                            socket.emit("RemoteEvent", { type: "stop_radio", data: { id: myId } });
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -464,7 +461,6 @@
 
                         if (myHp <= 0 && !isDead) {
                             isDead = true;
-                            stopAllAudioStreams();
                             setTimeout(() => {
                                 if (isKicked) return;
                                 isDead = false;
@@ -478,8 +474,8 @@
                     }
                     players[id] = sp;
                 }
-            } else if (pkt.type === "stop_audio") {
-                stopAudioForSender(pkt.data.senderId);
+            } else if (pkt.type === "stop_player_audio") {
+                stopAudioForPlayer(pkt.data.id);
             } else if (pkt.type === "chat_sync") {
                 const container = document.getElementById("chat-messages");
                 container.innerHTML = "";
@@ -499,8 +495,8 @@
                 } catch(e) {}
             } else if (pkt.type === "audio_chunk_receive") {
                 const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
-                const senderPlayer = players[senderId] || renderPlayers[senderId];
-                if (senderPlayer && senderPlayer.hp <= 0) return;
+                const senderP = players[senderId];
+                if (senderP && senderP.hp <= 0) return;
 
                 if (!incomingAudioStreams[sessionId]) {
                     const mediaSource = new MediaSource();
@@ -542,26 +538,23 @@
         });
 
         setInterval(() => {
-            if (isDead) {
-                stopAllAudioStreams();
-                return;
-            }
+            if (isKicked) return;
             for (let sId in incomingAudioStreams) {
                 const st = incomingAudioStreams[sId];
                 if (st && st.audio) {
                     const senderPlayer = players[st.senderId] || renderPlayers[st.senderId];
-                    if (!senderPlayer || senderPlayer.hp <= 0) {
+                    if (senderPlayer && senderPlayer.hp > 0) {
+                        const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
+                        const maxDist = 1500;
+                        if (dist > maxDist) {
+                            st.audio.volume = 0;
+                        } else {
+                            st.audio.volume = Math.max(0, 1 - (dist / maxDist));
+                        }
+                    } else {
                         st.audio.pause();
                         st.audio.src = "";
                         delete incomingAudioStreams[sId];
-                        continue;
-                    }
-                    const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
-                    const maxDist = 1500;
-                    if (dist > maxDist) {
-                        st.audio.volume = 0;
-                    } else {
-                        st.audio.volume = Math.max(0, 1 - (dist / maxDist));
                     }
                 }
             }
@@ -575,7 +568,7 @@
                 const nextChunk = streamData.queue.shift();
                 try {
                     streamData.sourceBuffer.appendBuffer(nextChunk);
-                    if (!streamData.isPlaying && streamData.audio && !isDead) {
+                    if (!streamData.isPlaying && streamData.audio) {
                         streamData.isPlaying = true;
                         streamData.audio.play().catch(() => {});
                     }
@@ -643,81 +636,66 @@
         };
 
         document.getElementById("btn-buy-death").onclick = () => {
-            if (!myItems.deathSound && myPoints >= 100) {
+            if (!myItems.deathSound && myPoints >= 100 && !isKicked) {
                 socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "deathSound" } });
             }
         };
         document.getElementById("btn-buy-radio").onclick = () => {
-            if (!myItems.radio && myPoints >= 350) {
+            if (!myItems.radio && myPoints >= 350 && !isKicked) {
                 socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "radio" } });
             }
         };
         document.getElementById("btn-buy-phys").onclick = () => {
-            if (!myItems.physGun && myPoints >= 500) {
+            if (!myItems.physGun && myPoints >= 500 && !isKicked) {
                 socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "physGun" } });
             }
         };
 
-        document.getElementById("file-death").onchange = async (e) => {
+        document.getElementById("file-death").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            if (file.size > 5 * 1024 * 1024) {
-                alert("Death sound file must be less than 5MB!");
-                e.target.value = "";
+            if (file.size >= 5 * 1024 * 1024) {
+                alert("Dying sound must be smaller than 5MB!");
                 return;
             }
-            try {
-                const buf = await file.arrayBuffer();
-                const decoded = await audioCtx.decodeAudioData(buf.slice(0));
-                if (decoded.duration > 10) {
-                    alert("Death sound must be shorter than 10 seconds!");
-                    e.target.value = "";
+            const tempAudio = new Audio(URL.createObjectURL(file));
+            tempAudio.onloadedmetadata = () => {
+                if (tempAudio.duration > 10) {
+                    alert("Dying sound must be shorter than 10 seconds!");
                     return;
                 }
                 localDeathFile = file;
-            } catch(err) {
-                alert("Invalid audio file.");
-                e.target.value = "";
-            }
+            };
         };
 
         document.getElementById("file-radio").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            if (file.size > 10 * 1024 * 1024) {
-                alert("Radio file must be less than 10MB!");
-                e.target.value = "";
+            if (file.size >= 10 * 1024 * 1024) {
+                alert("Radio audio must be smaller than 10MB!");
                 return;
             }
-            localRadioFile = file;
-        };
-
-        document.getElementById("btn-radio-play").onclick = async () => {
-            if (localRadioFile) {
-                if (localRadioFile.size > 10 * 1024 * 1024) {
-                    alert("File size exceeds 10MB limit!");
+            const tempAudio = new Audio(URL.createObjectURL(file));
+            tempAudio.onloadedmetadata = () => {
+                if (tempAudio.duration > 300) {
+                    alert("Radio audio must be shorter than 5 minutes!");
                     return;
                 }
-                try {
-                    const buf = await localRadioFile.arrayBuffer();
-                    const decoded = await audioCtx.decodeAudioData(buf.slice(0));
-                    if (decoded.duration > 300) {
-                        alert("Radio audio must be shorter than 5 minutes!");
-                        return;
-                    }
-                    stopAllAudioStreams();
-                    prepareAndBroadcastAudio(localRadioFile, "radio");
-                    document.getElementById("radio-modal").style.display = "none";
-                } catch(err) {
-                    alert("Failed to decode audio file.");
-                }
+                localRadioFile = file;
+            };
+        };
+
+        document.getElementById("btn-radio-play").onclick = () => {
+            if (localRadioFile) {
+                stopAllAudioStreams();
+                prepareAndBroadcastAudio(localRadioFile, "radio");
+                document.getElementById("radio-modal").style.display = "none";
             } else {
                 alert("Please select a radio audio file first.");
             }
         };
         document.getElementById("btn-radio-stop").onclick = () => {
             stopAllAudioStreams();
-            socket.emit("RemoteEvent", { type: "stop_radio", data: { id: myId } });
             document.getElementById("radio-modal").style.display = "none";
         };
 
@@ -781,6 +759,7 @@
         };
 
         function spawnProp(type, textureData = null) {
+            if (isKicked) return;
             const now = Date.now();
             if (now - lastPropSpawn < 1000) return;
             lastPropSpawn = now;
@@ -814,10 +793,13 @@
             if (document.getElementById(`mob-w${wId}`)) {
                 document.getElementById(`mob-w${wId}`).classList.add("active");
             }
-            socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
+            if (!isKicked) {
+                socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
+            }
         }
 
         window.addEventListener("keydown", (e) => {
+            if (isKicked) return;
             if (e.key.toLowerCase() === 'y' && !chatOpen) {
                 e.preventDefault();
                 toggleChat();
@@ -859,8 +841,9 @@
 
         document.getElementById("chat-btn").onclick = toggleChat;
         
-        document.getElementById("build-btn").onclick = () => {
-            if (isDead || chatOpen) return;
+        const buildBtn = document.getElementById("build-btn");
+        buildBtn.onclick = () => {
+            if (isDead || chatOpen || isKicked) return;
             const modal = document.getElementById("gmod-modal");
             modal.style.display = modal.style.display === "block" ? "none" : "block";
         };
@@ -872,6 +855,7 @@
         document.getElementById("mob-w5").onclick = () => setWeapon(5);
 
         function sendChat() {
+            if (isKicked) return;
             const text = chatInput.value.trim();
             if (text.length > 0) {
                 socket.emit("RemoteEvent", { type: "send_chat", data: { id: myId, text } });
@@ -882,13 +866,13 @@
 
         let mousePos = { x: canvas.width / 2, y: canvas.height / 2 };
         window.addEventListener("mousemove", (e) => {
-            if (chatOpen) return;
+            if (chatOpen || isKicked) return;
             mousePos.x = e.clientX;
             mousePos.y = e.clientY;
         });
 
         window.addEventListener("mousedown", (e) => {
-            if (chatOpen || isDead) return;
+            if (chatOpen || isDead || isKicked) return;
             if (e.button === 2) {
                 isMouseDown = true;
                 if (currentWeapon === 5) startPhysGunDrag();
@@ -909,7 +893,7 @@
         let leftTouchId = null;
 
         joystickEl.addEventListener("touchstart", (e) => {
-            if (chatOpen) return;
+            if (chatOpen || isKicked) return;
             const touch = e.changedTouches[0];
             leftTouchId = touch.identifier;
             joyActive = true;
@@ -918,7 +902,7 @@
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (!joyActive || chatOpen) return;
+            if (!joyActive || chatOpen || isKicked) return;
             let touch = null;
             for (let i = 0; i < e.touches.length; i++) {
                 if (e.touches[i].identifier === leftTouchId) {
@@ -957,7 +941,7 @@
         let isAimShooting = false;
 
         rightJoystickEl.addEventListener("touchstart", (e) => {
-            if (chatOpen) return;
+            if (chatOpen || isKicked) return;
             const touch = e.changedTouches[0];
             rightTouchId = touch.identifier;
             rightJoyActive = true;
@@ -966,7 +950,7 @@
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (!rightJoyActive || chatOpen) return;
+            if (!rightJoyActive || chatOpen || isKicked) return;
             let touch = null;
             for (let i = 0; i < e.touches.length; i++) {
                 if (e.touches[i].identifier === rightTouchId) {
@@ -1007,7 +991,7 @@
         let physTouchActive = false;
 
         window.addEventListener("touchstart", (e) => {
-            if (isDead || chatOpen) return;
+            if (isDead || chatOpen || isKicked) return;
             const touch = e.touches[0];
             if (touch.clientX > window.innerWidth - 220 && touch.clientY > window.innerHeight - 150) return;
             if (touch.clientX < 180 && touch.clientY > canvas.height - 180) return;
@@ -1027,7 +1011,7 @@
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (chatOpen) return;
+            if (chatOpen || isKicked) return;
             const touch = e.touches[0];
             mousePos.x = touch.clientX;
             mousePos.y = touch.clientY;
@@ -1046,6 +1030,7 @@
         });
 
         function tryShoot() {
+            if (isKicked) return;
             const now = Date.now();
             const stat = weaponStats[currentWeapon];
             if (now - lastShot < stat.rate) return;
@@ -1081,7 +1066,8 @@
 
         let lastInputEmit = 0;
         function update() {
-            if (!isDead && !chatOpen && !isKicked) {
+            if (isKicked) return;
+            if (!isDead && !chatOpen) {
                 const screenCenterX = canvas.width / 2;
                 const screenCenterY = canvas.height / 2;
                 
@@ -1181,13 +1167,6 @@
             }
         }
 
-        function lerpAngle(a, b, t) {
-            let diff = (b - a) % (Math.PI * 2);
-            if (diff < -Math.PI) diff += Math.PI * 2;
-            if (diff > Math.PI) diff -= Math.PI * 2;
-            return a + diff * t;
-        }
-
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1198,7 +1177,11 @@
                 } else {
                     renderPlayers[id].x += (sp.x - renderPlayers[id].x) * 0.3;
                     renderPlayers[id].y += (sp.y - renderPlayers[id].y) * 0.3;
-                    renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, 0.35);
+                    
+                    let diff = sp.angle - renderPlayers[id].angle;
+                    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+                    renderPlayers[id].angle += diff * 0.25;
+
                     renderPlayers[id].color = sp.color;
                     renderPlayers[id].hp = sp.hp;
                     renderPlayers[id].weapon = sp.weapon || 1;
