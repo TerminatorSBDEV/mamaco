@@ -39,10 +39,9 @@
         #chat-input { width: 93%; padding: 6px; background: rgba(15, 23, 42, 0.9); border: 1px solid #38bdf8; color: #fff; border-radius: 4px; font-size: 0.85rem; outline: none; }
 
         @media (max-width: 768px) {
-            #chat-box { width: 190px; height: 130px; top: 60px; left: 5px; }
-            #chat-messages { font-size: 0.7rem; padding: 4px; }
-            #chat-container { padding: 4px; }
-            #chat-input { font-size: 0.7rem; padding: 4px; }
+            #chat-box { width: 190px; height: 130px; font-size: 0.75rem; }
+            #chat-messages { font-size: 0.75rem; padding: 4px; }
+            #chat-input { font-size: 0.75rem; padding: 4px; }
         }
 
         /* Shop, Radio & GMod Prop Modals */
@@ -76,7 +75,7 @@
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
-    <div id="controls-hint">Press E: Spawn Menu | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
+    <div id="controls-hint">E: Spawn Menu | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
     
     <div id="chat-box">
         <div id="chat-messages"></div>
@@ -215,7 +214,6 @@
         let myPoints = 0;
         let myItems = { deathSound: false, radio: false, physGun: false };
         let isDead = false;
-        let isKicked = false;
         let lastShot = 0;
         let lastPropSpawn = 0;
         let aimAngle = 0;
@@ -245,17 +243,6 @@
         let chatOpen = false;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-        function lerp(a, b, t) {
-            return a + (b - a) * t;
-        }
-
-        function lerpAngle(a, b, t) {
-            let diff = (b - a) % (Math.PI * 2);
-            if (diff < -Math.PI) diff += Math.PI * 2;
-            if (diff > Math.PI) diff -= Math.PI * 2;
-            return a + diff * t;
-        }
         
         function playSfx(type, posX, posY) {
             const now = audioCtx.currentTime;
@@ -330,39 +317,63 @@
             }
         }
 
+        // Texture RAM caching
         const textureCache = {};
-        function getCachedTexture(dataUrl) {
-            if (!dataUrl) return null;
-            if (textureCache[dataUrl]) return textureCache[dataUrl];
-            const img = new Image();
-            img.src = dataUrl;
-            textureCache[dataUrl] = img;
-            return img;
+        function getCachedTexture(imgId, dataUrl) {
+            if (dataUrl) {
+                if (textureCache[imgId]) {
+                    textureCache[imgId].src = dataUrl;
+                    return textureCache[imgId];
+                }
+                const img = new Image();
+                img.src = dataUrl;
+                textureCache[imgId] = img;
+                return img;
+            }
+            return textureCache[imgId] || null;
         }
 
         let activeRecorder = null;
         let activePlayerNode = null;
 
+        async function getAudioDuration(file) {
+            return new Promise((resolve) => {
+                const audio = new Audio();
+                audio.src = URL.createObjectURL(file);
+                audio.onloadedmetadata = () => {
+                    resolve(audio.duration);
+                };
+                audio.onerror = () => resolve(0);
+            });
+        }
+
         async function prepareAndBroadcastAudio(file, broadcastType) {
             if (!file) return;
 
-            if (broadcastType === 'radio') {
+            if (broadcastType === "radio") {
                 if (file.size > 10 * 1024 * 1024) {
-                    alert("Radio audio file must be smaller than 10MB!");
+                    alert("Radio audio must be smaller than 10MB!");
                     return;
                 }
-            } else if (broadcastType === 'death') {
-                if (file.size > 5 * 1024 * 1024) return;
+                const dur = await getAudioDuration(file);
+                if (dur > 300) {
+                    alert("Radio audio must be shorter than 5 minutes!");
+                    return;
+                }
+            } else if (broadcastType === "death") {
+                if (file.size > 5 * 1024 * 1024) {
+                    alert("Death sound must be smaller than 5MB!");
+                    return;
+                }
+                const dur = await getAudioDuration(file);
+                if (dur > 10) {
+                    alert("Death sound must be shorter than 10 seconds!");
+                    return;
+                }
             }
 
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-            if (broadcastType === 'radio' && audioBuffer.duration > 300) {
-                alert("Radio audio must be shorter than 5 minutes!");
-                return;
-            }
-            if (broadcastType === 'death' && audioBuffer.duration > 10) return;
 
             const streamDest = audioCtx.createMediaStreamDestination();
             const playerNode = audioCtx.createBufferSource();
@@ -375,19 +386,19 @@
             let chunkIndex = 0;
             const sessionId = Math.random().toString(36).substring(2, 9);
 
-            socket.emit("RemoteEvent", { type: "audio_upload_start", data: { id: myId, sessionId, broadcastType } });
+            socket.emit("RemoteEvent", { type: "audio_upload_start", data: { id: myId, sessionId, broadcastType }, time: Date.now() });
 
             recorder.ondataavailable = (e) => {
                 if (e.data.size > 0) {
                     e.data.arrayBuffer().then(buf => {
-                        socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: buf, isLast: false } });
+                        socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: buf, isLast: false }, time: Date.now() });
                         chunkIndex++;
                     });
                 }
             };
 
             recorder.onstop = () => {
-                socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: null, isLast: true } });
+                socket.emit("RemoteEvent", { type: "audio_chunk", data: { id: myId, sessionId, chunkIndex, chunk: null, isLast: true }, time: Date.now() });
             };
 
             recorder.start(1000);
@@ -412,9 +423,6 @@
                     st.audio.src = "";
                 }
             }
-            if (socket.connected) {
-                socket.emit("RemoteEvent", { type: "stop_audio_stream", data: { id: myId } });
-            }
         }
 
         const incomingAudioStreams = {};
@@ -425,21 +433,16 @@
 
         socket.on("joined_successfully", () => {
             document.getElementById("status").innerText = "Connected";
-            socket.emit("RemoteEvent", { type: "player_join", data: { id: myId, color: myColor, x: myPos.x, y: myPos.y, weapon: currentWeapon } });
+            socket.emit("RemoteEvent", { type: "player_join", data: { id: myId, color: myColor, x: myPos.x, y: myPos.y, weapon: currentWeapon }, time: Date.now() });
         });
 
-        socket.on("kicked", (reason) => {
-            isKicked = true;
-            stopAllAudioStreams();
+        socket.on("kicked", () => {
             socket.disconnect();
-            document.getElementById("status").innerText = "KICKED (" + (reason || "Disconnected") + ")";
-            alert("You were kicked from the server: " + (reason || "Disconnected"));
+            document.body.innerHTML = "<div style='color:#ef4444; font-size:2rem; text-align:center; margin-top:20vh; font-weight:bold;'>Kicked from server. Refresh to reconnect.</div>";
         });
 
         socket.on("RemoteEvent", (pkt) => {
-            if (isKicked) return;
-
-            if (pkt.type === "player_state_update") {
+            if (pkt.type === "state_update") {
                 const serverPlayers = pkt.data.players;
                 for (let id in serverPlayers) {
                     const sp = serverPlayers[id];
@@ -458,6 +461,8 @@
 
                         if (prevHp > 0 && myHp <= 0) {
                             stopAllAudioStreams();
+                            socket.emit("RemoteEvent", { type: "stop_radio_stream", data: { id: myId }, time: Date.now() });
+
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -467,7 +472,7 @@
                             isDead = true;
                             setTimeout(() => {
                                 isDead = false;
-                                socket.emit("RemoteEvent", { type: "respawn", data: { id: myId } });
+                                socket.emit("RemoteEvent", { type: "respawn", data: { id: myId }, time: Date.now() });
                             }, 3000);
                         }
                     }
@@ -477,7 +482,7 @@
                     }
                     players[id] = sp;
                 }
-            } else if (pkt.type === "world_state_update") {
+            } else if (pkt.type === "world_update") {
                 walls = pkt.data.walls || [];
                 medkits = pkt.data.medkits || [];
                 const serverBullets = pkt.data.bullets || [];
@@ -490,17 +495,20 @@
                     }
                 });
             } else if (pkt.type === "cache_image") {
-                const { imgId, textureData } = pkt.data;
-                getCachedTexture(textureData);
-                textureCache[imgId] = textureCache[textureData];
+                getCachedTexture(pkt.data.imgId, pkt.data.texture);
             } else if (pkt.type === "uncache_image") {
-                const { imgId } = pkt.data;
-                delete textureCache[imgId];
-            } else if (pkt.type === "image_cache_sync") {
-                const textures = pkt.data.textures || {};
-                for (let imgId in textures) {
-                    const img = getCachedTexture(textures[imgId]);
-                    textureCache[imgId] = img;
+                delete textureCache[pkt.data.imgId];
+            } else if (pkt.type === "stop_audio_stream") {
+                if (pkt.data.id === myId) {
+                    stopAllAudioStreams();
+                }
+                for (let sId in incomingAudioStreams) {
+                    if (incomingAudioStreams[sId].senderId === pkt.data.id) {
+                        if (incomingAudioStreams[sId].audio) {
+                            incomingAudioStreams[sId].audio.pause();
+                        }
+                        delete incomingAudioStreams[sId];
+                    }
                 }
             } else if (pkt.type === "chat_sync") {
                 const container = document.getElementById("chat-messages");
@@ -519,23 +527,9 @@
                     const audio = new Audio(pkt.data.base64);
                     audio.play().catch(()=>{});
                 } catch(e) {}
-            } else if (pkt.type === "stop_remote_audio") {
-                const senderId = pkt.data.senderId;
-                for (let sId in incomingAudioStreams) {
-                    if (incomingAudioStreams[sId] && incomingAudioStreams[sId].senderId === senderId) {
-                        if (incomingAudioStreams[sId].audio) {
-                            incomingAudioStreams[sId].audio.pause();
-                            incomingAudioStreams[sId].audio.src = "";
-                        }
-                        delete incomingAudioStreams[sId];
-                    }
-                }
             } else if (pkt.type === "audio_chunk_receive") {
                 const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
                 
-                const senderP = players[senderId];
-                if (senderP && senderP.hp <= 0) return;
-
                 if (!incomingAudioStreams[sessionId]) {
                     const mediaSource = new MediaSource();
                     const audio = new Audio();
@@ -575,6 +569,7 @@
             }
         });
 
+        // Spatial volume updates for radio streams
         setInterval(() => {
             for (let sId in incomingAudioStreams) {
                 const st = incomingAudioStreams[sId];
@@ -590,7 +585,6 @@
                         }
                     } else {
                         st.audio.volume = 0;
-                        st.audio.pause();
                     }
                 }
             }
@@ -673,37 +667,29 @@
 
         document.getElementById("btn-buy-death").onclick = () => {
             if (!myItems.deathSound && myPoints >= 100) {
-                socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "deathSound" } });
+                socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "deathSound" }, time: Date.now() });
             }
         };
         document.getElementById("btn-buy-radio").onclick = () => {
             if (!myItems.radio && myPoints >= 350) {
-                socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "radio" } });
+                socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "radio" }, time: Date.now() });
             }
         };
         document.getElementById("btn-buy-phys").onclick = () => {
             if (!myItems.physGun && myPoints >= 500) {
-                socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "physGun" } });
+                socket.emit("RemoteEvent", { type: "buy_item", data: { id: myId, item: "physGun" }, time: Date.now() });
             }
         };
 
         document.getElementById("file-death").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            if (file.size > 5 * 1024 * 1024) {
-                alert("Death sound file must be smaller than 5MB!");
-                return;
-            }
             localDeathFile = file;
         };
 
         document.getElementById("file-radio").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            if (file.size > 10 * 1024 * 1024) {
-                alert("Radio audio file must be smaller than 10MB!");
-                return;
-            }
             localRadioFile = file;
         };
 
@@ -718,9 +704,11 @@
         };
         document.getElementById("btn-radio-stop").onclick = () => {
             stopAllAudioStreams();
+            socket.emit("RemoteEvent", { type: "stop_radio_stream", data: { id: myId }, time: Date.now() });
             document.getElementById("radio-modal").style.display = "none";
         };
 
+        // Color Sliders
         const sliderR = document.getElementById("slider-r");
         const sliderG = document.getElementById("slider-g");
         const sliderB = document.getElementById("slider-b");
@@ -791,7 +779,8 @@
 
             socket.emit("RemoteEvent", { 
                 type: "spawn_prop", 
-                data: { id: myId, angle: aimAngle, propType: type, r, g, b, texture: textureData } 
+                data: { id: myId, angle: aimAngle, propType: type, r, g, b, texture: textureData },
+                time: Date.now()
             });
             document.getElementById("gmod-modal").style.display = "none";
         }
@@ -814,11 +803,10 @@
             if (document.getElementById(`mob-w${wId}`)) {
                 document.getElementById(`mob-w${wId}`).classList.add("active");
             }
-            socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
+            socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon }, time: Date.now() });
         }
 
         window.addEventListener("keydown", (e) => {
-            if (isKicked) return;
             if (e.key.toLowerCase() === 'y' && !chatOpen) {
                 e.preventDefault();
                 toggleChat();
@@ -859,8 +847,9 @@
         });
 
         document.getElementById("chat-btn").onclick = toggleChat;
+        
         document.getElementById("build-btn").onclick = () => {
-            if (isDead || chatOpen || isKicked) return;
+            if (isDead || chatOpen) return;
             const modal = document.getElementById("gmod-modal");
             modal.style.display = modal.style.display === "block" ? "none" : "block";
         };
@@ -874,7 +863,7 @@
         function sendChat() {
             const text = chatInput.value.trim();
             if (text.length > 0) {
-                socket.emit("RemoteEvent", { type: "send_chat", data: { id: myId, text } });
+                socket.emit("RemoteEvent", { type: "send_chat", data: { id: myId, text }, time: Date.now() });
             }
             chatInput.value = "";
             toggleChat();
@@ -882,13 +871,13 @@
 
         let mousePos = { x: canvas.width / 2, y: canvas.height / 2 };
         window.addEventListener("mousemove", (e) => {
-            if (chatOpen) return;
+            if (chatOpen || document.getElementById("gmod-modal").style.display === "block") return;
             mousePos.x = e.clientX;
             mousePos.y = e.clientY;
         });
 
         window.addEventListener("mousedown", (e) => {
-            if (chatOpen || isDead || isKicked) return;
+            if (chatOpen || isDead || document.getElementById("gmod-modal").style.display === "block") return;
             if (e.button === 2) {
                 isMouseDown = true;
                 if (currentWeapon === 5) startPhysGunDrag();
@@ -909,7 +898,7 @@
         let leftTouchId = null;
 
         joystickEl.addEventListener("touchstart", (e) => {
-            if (chatOpen || isKicked) return;
+            if (chatOpen) return;
             const touch = e.changedTouches[0];
             leftTouchId = touch.identifier;
             joyActive = true;
@@ -918,7 +907,7 @@
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (!joyActive || chatOpen || isKicked) return;
+            if (!joyActive || chatOpen) return;
             let touch = null;
             for (let i = 0; i < e.touches.length; i++) {
                 if (e.touches[i].identifier === leftTouchId) {
@@ -957,7 +946,7 @@
         let isAimShooting = false;
 
         rightJoystickEl.addEventListener("touchstart", (e) => {
-            if (chatOpen || isKicked) return;
+            if (chatOpen || document.getElementById("gmod-modal").style.display === "block") return;
             const touch = e.changedTouches[0];
             rightTouchId = touch.identifier;
             rightJoyActive = true;
@@ -966,7 +955,7 @@
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (!rightJoyActive || chatOpen || isKicked) return;
+            if (!rightJoyActive || chatOpen || document.getElementById("gmod-modal").style.display === "block") return;
             let touch = null;
             for (let i = 0; i < e.touches.length; i++) {
                 if (e.touches[i].identifier === rightTouchId) {
@@ -1007,7 +996,7 @@
         let physTouchActive = false;
 
         window.addEventListener("touchstart", (e) => {
-            if (isDead || chatOpen || isKicked) return;
+            if (isDead || chatOpen || document.getElementById("gmod-modal").style.display === "block") return;
             const touch = e.touches[0];
             if (touch.clientX > window.innerWidth - 220 && touch.clientY > window.innerHeight - 150) return;
             if (touch.clientX < 180 && touch.clientY > canvas.height - 180) return;
@@ -1027,7 +1016,7 @@
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (chatOpen || isKicked) return;
+            if (chatOpen || document.getElementById("gmod-modal").style.display === "block") return;
             const touch = e.touches[0];
             mousePos.x = touch.clientX;
             mousePos.y = touch.clientY;
@@ -1051,7 +1040,7 @@
             if (now - lastShot < stat.rate) return;
             lastShot = now;
 
-            socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
+            socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon }, time: Date.now() });
         }
 
         function startPhysGunDrag() {
@@ -1081,26 +1070,26 @@
 
         let lastInputEmit = 0;
         function update() {
-            if (isKicked) return;
-
+            const isPropsOpen = document.getElementById("gmod-modal").style.display === "block";
             if (!isDead && !chatOpen) {
                 const screenCenterX = canvas.width / 2;
                 const screenCenterY = canvas.height / 2;
                 
-                if (!isMobile) {
+                if (!isMobile && !isPropsOpen) {
                     aimAngle = Math.atan2(mousePos.y - screenCenterY, mousePos.x - screenCenterX);
                 }
 
-                if ((isMouseDown && currentWeapon !== 5) || isAimShooting) {
+                if (((isMouseDown && currentWeapon !== 5) || isAimShooting) && !isPropsOpen) {
                     tryShoot();
                 }
 
-                if (currentWeapon === 5 && isMouseDown && physTarget) {
+                if (currentWeapon === 5 && isMouseDown && physTarget && !isPropsOpen) {
                     const targetWorldX = myPos.x + (mousePos.x - screenCenterX);
                     const targetWorldY = myPos.y + (mousePos.y - screenCenterY);
                     socket.emit("RemoteEvent", { 
                         type: "phys_drag", 
-                        data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY } 
+                        data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY },
+                        time: Date.now()
                     });
                 }
 
@@ -1109,15 +1098,16 @@
                 const now = Date.now();
                 if (now - lastInputEmit >= 1000 / 50) {
                     lastInputEmit = now;
-                    socket.emit("RemoteEvent", { type: "player_input", data: { id: myId, input: inputData, angle: aimAngle, color: myColor, weapon: currentWeapon } });
+                    socket.emit("RemoteEvent", { type: "player_input", data: { id: myId, input: inputData, angle: aimAngle, color: myColor, weapon: currentWeapon }, time: Date.now() });
                 }
             }
 
+            // Linear position interpolation
             for (let bId in renderBullets) {
                 const rb = renderBullets[bId];
                 if (bullets[bId]) {
-                    rb.x = lerp(rb.x, bullets[bId].x, 0.35);
-                    rb.y = lerp(rb.y, bullets[bId].y, 0.35);
+                    rb.x += (bullets[bId].x - rb.x) * 0.35;
+                    rb.y += (bullets[bId].y - rb.y) * 0.35;
                 } else {
                     delete renderBullets[bId];
                 }
@@ -1191,9 +1181,10 @@
                 if (!renderPlayers[id]) {
                     renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1 };
                 } else {
-                    renderPlayers[id].x = lerp(renderPlayers[id].x, sp.x, 0.3);
-                    renderPlayers[id].y = lerp(renderPlayers[id].y, sp.y, 0.3);
-                    renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, 0.3);
+                    // Linear lerp interpolation
+                    renderPlayers[id].x += (sp.x - renderPlayers[id].x) * 0.3;
+                    renderPlayers[id].y += (sp.y - renderPlayers[id].y) * 0.3;
+                    renderPlayers[id].angle += (sp.angle - renderPlayers[id].angle) * 0.3;
                     renderPlayers[id].color = sp.color;
                     renderPlayers[id].hp = sp.hp;
                     renderPlayers[id].weapon = sp.weapon || 1;
@@ -1257,8 +1248,8 @@
                 if (w.type === 'square' || w.type === 'image') {
                     ctx.fillRect(-25, -25, 50, 50);
                     ctx.strokeRect(-25, -25, 50, 50);
-                    if (w.type === 'image' && w.textureId) {
-                        const img = textureCache[w.textureId];
+                    if (w.type === 'image' && w.imageId) {
+                        const img = getCachedTexture(w.imageId, w.texture);
                         if (img && img.complete) {
                             ctx.drawImage(img, -25, -25, 50, 50);
                         }
