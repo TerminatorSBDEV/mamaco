@@ -39,7 +39,7 @@
         #chat-input { width: 93%; padding: 6px; background: rgba(15, 23, 42, 0.9); border: 1px solid #38bdf8; color: #fff; border-radius: 4px; font-size: 0.85rem; outline: none; }
 
         @media (max-width: 768px) {
-            #chat-box { width: 190px; height: 130px; }
+            #chat-box { width: 180px; height: 140px; }
             #chat-messages { font-size: 0.75rem; padding: 4px; }
             #chat-input { font-size: 0.75rem; padding: 4px; }
         }
@@ -89,7 +89,7 @@
     
     <div id="action-btns">
         <div id="chat-btn" class="action-btn">💬</div>
-        <div id="build-btn" class="action-btn" title="Click to open Spawn Menu">🧱</div>
+        <div id="build-btn" class="action-btn" title="Open Spawn Menu">🧱</div>
     </div>
 
     <div id="mob-w1" class="mob-weapon-btn active">W1</div>
@@ -120,7 +120,7 @@
     <!-- Radio Panel GUI -->
     <div id="radio-modal">
         <div class="modal-title">Radio Panel</div>
-        <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:8px;">Audio Streaming Mode (64kbps chunks, &lt;10MB, &lt;5 min).</div>
+        <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:8px;">Audio Streaming Mode (64kbps chunks).</div>
         <input type="file" id="file-radio" accept="audio/*" style="margin-bottom:10px; width:100%;" />
         <div style="display:flex; gap:8px;">
             <button id="btn-radio-play" style="flex:1; background:#22c55e; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; color:white;">Play & Broadcast</button>
@@ -207,7 +207,6 @@
         const key = "146cf8ce56";
         const socket = io(link, { auth: { token: "default_key" } });
 
-        let isKicked = false;
         let myId = Math.random().toString(36).substring(2, 7);
         let myColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
         let myPos = { x: Math.random() * 1500, y: Math.random() * 1500 };
@@ -215,6 +214,7 @@
         let myPoints = 0;
         let myItems = { deathSound: false, radio: false, physGun: false };
         let isDead = false;
+        let isKicked = false;
         let lastShot = 0;
         let lastPropSpawn = 0;
         let aimAngle = 0;
@@ -244,19 +244,6 @@
         let chatOpen = false;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-        function lerp(a, b, t) { return a + (b - a) * t; }
-        function lerpAngle(a, b, t) {
-            let diff = (b - a) % (Math.PI * 2);
-            if (diff < -Math.PI) diff += Math.PI * 2;
-            if (diff > Math.PI) diff -= Math.PI * 2;
-            return a + diff * t;
-        }
-
-        function isGmodMenuOpen() {
-            const el = document.getElementById("gmod-modal");
-            return el && el.style.display === "block";
-        }
         
         function playSfx(type, posX, posY) {
             const now = audioCtx.currentTime;
@@ -331,17 +318,18 @@
             }
         }
 
+        // Texture RAM Cache system
         const textureCache = {};
-        function getCachedTexture(key, dataUrl = null) {
-            if (!key) return null;
-            if (textureCache[key]) return textureCache[key];
-            if (dataUrl) {
-                const img = new Image();
-                img.src = dataUrl;
-                textureCache[key] = img;
-                return img;
-            }
-            return null;
+        const imageCacheData = {};
+
+        function getCachedTexture(textureRef) {
+            if (!textureRef) return null;
+            const dataUrl = imageCacheData[textureRef] || textureRef;
+            if (textureCache[dataUrl]) return textureCache[dataUrl];
+            const img = new Image();
+            img.src = dataUrl;
+            textureCache[dataUrl] = img;
+            return img;
         }
 
         let activeRecorder = null;
@@ -349,21 +337,8 @@
 
         async function prepareAndBroadcastAudio(file, broadcastType) {
             if (!file) return;
-            if (broadcastType === "radio") {
-                if (file.size > 10 * 1024 * 1024) { alert("Radio file size must be less than 10MB!"); return; }
-            } else if (broadcastType === "death") {
-                if (file.size > 5 * 1024 * 1024) { alert("Death sound size must be less than 5MB!"); return; }
-            }
-
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-            if (broadcastType === "radio" && audioBuffer.duration > 300) {
-                alert("Radio audio must be shorter than 5 minutes!"); return;
-            }
-            if (broadcastType === "death" && audioBuffer.duration > 10) {
-                alert("Death sound must be shorter than 10 seconds!"); return;
-            }
 
             const streamDest = audioCtx.createMediaStreamDestination();
             const playerNode = audioCtx.createBufferSource();
@@ -407,23 +382,30 @@
                 activePlayerNode = null;
             }
             for (let sId in incomingAudioStreams) {
-                stopStreamSession(sId);
+                const st = incomingAudioStreams[sId];
+                if (st && st.audio) {
+                    st.audio.pause();
+                    st.audio.src = "";
+                }
             }
         }
 
-        function stopStreamSession(sessionId) {
-            const st = incomingAudioStreams[sessionId];
-            if (st && st.audio) {
-                st.audio.pause();
-                st.audio.src = "";
+        function stopStreamsForSender(senderId) {
+            for (let sId in incomingAudioStreams) {
+                const st = incomingAudioStreams[sId];
+                if (st && st.senderId === senderId) {
+                    if (st.audio) {
+                        st.audio.pause();
+                        st.audio.src = "";
+                    }
+                    delete incomingAudioStreams[sId];
+                }
             }
-            delete incomingAudioStreams[sessionId];
         }
 
         const incomingAudioStreams = {};
 
         socket.on("connect", () => {
-            if (isKicked) return;
             socket.emit("join_virtual_server", { key });
         });
 
@@ -432,45 +414,39 @@
             socket.emit("RemoteEvent", { type: "player_join", data: { id: myId, color: myColor, x: myPos.x, y: myPos.y, weapon: currentWeapon } });
         });
 
-        socket.on("kicked", (data) => {
+        socket.on("kicked", (reason) => {
             isKicked = true;
-            document.getElementById("status").innerText = "Kicked: " + (data.reason || "Disconnected");
-            stopAllAudioStreams();
             socket.disconnect();
-            alert("You have been kicked: " + (data.reason || "Kicked from server"));
+            document.getElementById("status").innerText = "KICKED: " + (reason || "Disconnected");
+            alert("Kicked from server: " + (reason || "Disconnected"));
         });
 
-        socket.on("cache_image", (data) => {
-            if (data.imageId && data.texture) {
-                getCachedTexture(data.imageId, data.texture);
+        socket.on("image_cache_sync", (cacheMap) => {
+            for (let imgId in cacheMap) {
+                imageCacheData[imgId] = cacheMap[imgId];
             }
         });
 
-        socket.on("uncache_image", (data) => {
-            if (data.imageId) {
-                delete textureCache[data.imageId];
-            }
+        socket.on("image_cache_register", (data) => {
+            imageCacheData[data.imgId] = data.texture;
         });
 
-        socket.on("update_image_state", (data) => {
-            if (data.imageId && data.texture) {
-                const img = new Image();
-                img.src = data.texture;
-                textureCache[data.imageId] = img;
-            }
+        socket.on("image_cache_update", (data) => {
+            imageCacheData[data.imgId] = data.texture;
+            delete textureCache[data.texture];
         });
 
-        socket.on("stop_radio_stream", (data) => {
-            for (let sId in incomingAudioStreams) {
-                if (incomingAudioStreams[sId].senderId === data.senderId) {
-                    stopStreamSession(sId);
-                }
-            }
+        socket.on("image_cache_remove", (data) => {
+            delete imageCacheData[data.imgId];
+        });
+
+        socket.on("stop_audio_stream", (data) => {
+            stopStreamsForSender(data.senderId);
         });
 
         socket.on("RemoteEvent", (pkt) => {
             if (isKicked) return;
-            if (pkt.type === "players_update") {
+            if (pkt.type === "state_update_players") {
                 const serverPlayers = pkt.data.players;
                 for (let id in serverPlayers) {
                     const sp = serverPlayers[id];
@@ -489,7 +465,7 @@
 
                         if (prevHp > 0 && myHp <= 0) {
                             stopAllAudioStreams();
-                            socket.emit("RemoteEvent", { type: "stop_audio", data: { senderId: myId } });
+                            socket.emit("RemoteEvent", { type: "stop_audio_stream", data: { id: myId } });
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -497,6 +473,7 @@
 
                         if (myHp <= 0 && !isDead) {
                             isDead = true;
+                            stopAllAudioStreams();
                             setTimeout(() => {
                                 isDead = false;
                                 socket.emit("RemoteEvent", { type: "respawn", data: { id: myId } });
@@ -509,11 +486,8 @@
                     }
                     players[id] = sp;
                 }
-            } else if (pkt.type === "world_update") {
-                walls = pkt.data.walls || [];
-                medkits = pkt.data.medkits || [];
+            } else if (pkt.type === "state_update_bullets") {
                 const serverBullets = pkt.data.bullets || [];
-
                 bullets = {};
                 serverBullets.forEach(b => {
                     bullets[b.id] = b;
@@ -521,6 +495,9 @@
                         renderBullets[b.id] = { x: b.x, y: b.y, vx: b.vx, vy: b.vy };
                     }
                 });
+            } else if (pkt.type === "state_update_props") {
+                walls = pkt.data.walls || [];
+                medkits = pkt.data.medkits || [];
             } else if (pkt.type === "chat_sync") {
                 const container = document.getElementById("chat-messages");
                 container.innerHTML = "";
@@ -540,7 +517,9 @@
                 } catch(e) {}
             } else if (pkt.type === "audio_chunk_receive") {
                 const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
-                
+                const senderP = players[senderId];
+                if (senderP && senderP.hp <= 0) return;
+
                 if (!incomingAudioStreams[sessionId]) {
                     const mediaSource = new MediaSource();
                     const audio = new Audio();
@@ -585,7 +564,7 @@
                 const st = incomingAudioStreams[sId];
                 if (st && st.audio) {
                     const senderPlayer = players[st.senderId] || renderPlayers[st.senderId];
-                    if (senderPlayer) {
+                    if (senderPlayer && senderPlayer.hp > 0) {
                         const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
                         const maxDist = 1500;
                         if (dist > maxDist) {
@@ -593,6 +572,8 @@
                         } else {
                             st.audio.volume = Math.max(0, 1 - (dist / maxDist));
                         }
+                    } else {
+                        st.audio.volume = 0;
                     }
                 }
             }
@@ -693,20 +674,34 @@
             const file = e.target.files[0];
             if (!file) return;
             if (file.size > 5 * 1024 * 1024) {
-                alert("Death sound size must be less than 5MB!");
+                alert("Death sound must be less than 5MB!");
                 return;
             }
-            localDeathFile = file;
+            const audioTemp = new Audio(URL.createObjectURL(file));
+            audioTemp.onloadedmetadata = () => {
+                if (audioTemp.duration > 10) {
+                    alert("Death sound must be shorter than 10 seconds!");
+                    return;
+                }
+                localDeathFile = file;
+            };
         };
 
         document.getElementById("file-radio").onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
             if (file.size > 10 * 1024 * 1024) {
-                alert("Radio audio file size must be less than 10MB!");
+                alert("Radio audio must be less than 10MB!");
                 return;
             }
-            localRadioFile = file;
+            const audioTemp = new Audio(URL.createObjectURL(file));
+            audioTemp.onloadedmetadata = () => {
+                if (audioTemp.duration > 300) {
+                    alert("Radio audio must be shorter than 5 minutes!");
+                    return;
+                }
+                localRadioFile = file;
+            };
         };
 
         document.getElementById("btn-radio-play").onclick = () => {
@@ -720,10 +715,11 @@
         };
         document.getElementById("btn-radio-stop").onclick = () => {
             stopAllAudioStreams();
-            socket.emit("RemoteEvent", { type: "stop_audio", data: { senderId: myId } });
+            socket.emit("RemoteEvent", { type: "stop_audio_stream", data: { id: myId } });
             document.getElementById("radio-modal").style.display = "none";
         };
 
+        // Color Sliders
         const sliderR = document.getElementById("slider-r");
         const sliderG = document.getElementById("slider-g");
         const sliderB = document.getElementById("slider-b");
@@ -862,6 +858,7 @@
         });
 
         document.getElementById("chat-btn").onclick = toggleChat;
+        
         document.getElementById("build-btn").onclick = () => {
             if (isDead || chatOpen || isKicked) return;
             const modal = document.getElementById("gmod-modal");
@@ -885,13 +882,13 @@
 
         let mousePos = { x: canvas.width / 2, y: canvas.height / 2 };
         window.addEventListener("mousemove", (e) => {
-            if (chatOpen || isGmodMenuOpen() || isKicked) return;
+            if (chatOpen || isKicked) return;
             mousePos.x = e.clientX;
             mousePos.y = e.clientY;
         });
 
         window.addEventListener("mousedown", (e) => {
-            if (chatOpen || isDead || isGmodMenuOpen() || isKicked) return;
+            if (chatOpen || isDead || isKicked) return;
             if (e.button === 2) {
                 isMouseDown = true;
                 if (currentWeapon === 5) startPhysGunDrag();
@@ -986,7 +983,9 @@
             const angle = Math.atan2(dy, dx);
 
             rightStickEl.style.transform = `translate(${Math.cos(angle)*clampedDist}px, ${Math.sin(angle)*clampedDist}px)`;
-            if (!isGmodMenuOpen()) {
+            
+            const isGmodOpen = document.getElementById("gmod-modal").style.display === "block";
+            if (!isGmodOpen) {
                 aimAngle = angle;
             }
 
@@ -1032,7 +1031,7 @@
         });
 
         window.addEventListener("touchmove", (e) => {
-            if (chatOpen || isGmodMenuOpen() || isKicked) return;
+            if (chatOpen || isKicked) return;
             const touch = e.touches[0];
             mousePos.x = touch.clientX;
             mousePos.y = touch.clientY;
@@ -1051,6 +1050,7 @@
         });
 
         function tryShoot() {
+            if (isKicked) return;
             const now = Date.now();
             const stat = weaponStats[currentWeapon];
             if (now - lastShot < stat.rate) return;
@@ -1086,11 +1086,14 @@
 
         let lastInputEmit = 0;
         function update() {
-            if (!isDead && !chatOpen && !isKicked) {
+            if (isKicked) return;
+            if (!isDead && !chatOpen) {
                 const screenCenterX = canvas.width / 2;
                 const screenCenterY = canvas.height / 2;
                 
-                if (!isMobile && !isGmodMenuOpen()) {
+                const isGmodOpen = document.getElementById("gmod-modal").style.display === "block";
+
+                if (!isMobile && !isGmodOpen) {
                     aimAngle = Math.atan2(mousePos.y - screenCenterY, mousePos.x - screenCenterX);
                 }
 
@@ -1116,11 +1119,12 @@
                 }
             }
 
+            // Linear lerp interpolation
             for (let bId in renderBullets) {
                 const rb = renderBullets[bId];
                 if (bullets[bId]) {
-                    rb.x = lerp(rb.x, bullets[bId].x, 0.35);
-                    rb.y = lerp(rb.y, bullets[bId].y, 0.35);
+                    rb.x += (bullets[bId].x - rb.x) * 0.35;
+                    rb.y += (bullets[bId].y - rb.y) * 0.35;
                 } else {
                     delete renderBullets[bId];
                 }
@@ -1189,14 +1193,19 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Linear lerp interpolation for latency hiding
             for (let id in players) {
                 let sp = players[id];
                 if (!renderPlayers[id]) {
                     renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1 };
                 } else {
-                    renderPlayers[id].x = lerp(renderPlayers[id].x, sp.x, 0.3);
-                    renderPlayers[id].y = lerp(renderPlayers[id].y, sp.y, 0.3);
-                    renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, 0.3);
+                    renderPlayers[id].x += (sp.x - renderPlayers[id].x) * 0.3;
+                    renderPlayers[id].y += (sp.y - renderPlayers[id].y) * 0.3;
+
+                    let angleDiff = sp.angle - renderPlayers[id].angle;
+                    angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+                    renderPlayers[id].angle += angleDiff * 0.3;
+
                     renderPlayers[id].color = sp.color;
                     renderPlayers[id].hp = sp.hp;
                     renderPlayers[id].weapon = sp.weapon || 1;
@@ -1260,8 +1269,8 @@
                 if (w.type === 'square' || w.type === 'image') {
                     ctx.fillRect(-25, -25, 50, 50);
                     ctx.strokeRect(-25, -25, 50, 50);
-                    if (w.type === 'image' && w.imageId) {
-                        const img = getCachedTexture(w.imageId);
+                    if (w.type === 'image' && w.texture) {
+                        const img = getCachedTexture(w.texture);
                         if (img && img.complete) {
                             ctx.drawImage(img, -25, -25, 50, 50);
                         }
