@@ -14,7 +14,7 @@
         .top-btn { background: #3b82f6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
         .top-btn:hover { background: #2563eb; }
 
-        #ammo-ui { position: absolute; bottom: 45px; left: 50%; transform: translateX(-50%); pointer-events: none; font-weight: bold; font-size: 1.4rem; text-shadow: 2px 2px 4px #000; background: rgba(15, 23, 42, 0.8); padding: 4px 16px; border-radius: 8px; border: 1px solid #38bdf8; color: #38bdf8; z-index: 10; }
+        #ammo-hud { position: absolute; bottom: 15px; right: 20px; font-weight: bold; font-size: 1.5rem; text-shadow: 2px 2px 4px #000; z-index: 10; color: #facc15; pointer-events: none; }
 
         #joystick { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none; z-index: 10; }
         #stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; pointer-events: none; }
@@ -25,7 +25,7 @@
         #action-btns { position: absolute; bottom: 40px; right: 210px; display: flex; gap: 10px; z-index: 10; }
         .action-btn { width: 55px; height: 55px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; cursor: pointer; color: #fff; }
         .action-btn.active-mic { background: rgba(34, 197, 94, 0.6); border-color: #22c55e; }
-        
+
         .mob-weapon-btn { position: absolute; bottom: 105px; width: 48px; height: 48px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; display: none; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; cursor: pointer; z-index: 10; color: #fff; }
         #mob-w1 { right: 210px; }
         #mob-w2 { right: 264px; }
@@ -71,13 +71,13 @@
         HP: <span id="hp">100</span> | Points: <span id="pts">0</span> | Gun: <span id="wname">Rifle</span> | <span id="status">Connecting...</span>
     </div>
 
+    <div id="ammo-hud">30 / 30</div>
+
     <div id="top-btns">
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
-    <div id="ammo-ui"><span id="ammo-text">30 / 30</span></div>
-
-    <div id="controls-hint">E / Click 🧱: Spawn Menu | Y: Chat | H: Shop | Z: Radio | R: Reload | V: Mic | 1-5: Select Weapon | WASD: Move</div>
+    <div id="controls-hint">E / Click 🧱: Spawn Menu | Y: Chat | H: Shop | Z: Radio | R: Reload | V: Mic | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
     
     <div id="chat-box">
         <div id="chat-messages"></div>
@@ -91,9 +91,9 @@
     
     <div id="action-btns">
         <div id="chat-btn" class="action-btn">💬</div>
-        <div id="reload-btn" class="action-btn">🔄</div>
-        <div id="mic-btn" class="action-btn">🎙️</div>
         <div id="build-btn" class="action-btn" title="Open Spawn Menu">🧱</div>
+        <div id="reload-btn" class="action-btn" title="Reload">🔄</div>
+        <div id="mic-btn" class="action-btn" title="Toggle Mic">🎙️</div>
     </div>
 
     <div id="mob-w1" class="mob-weapon-btn active">W1</div>
@@ -223,17 +223,14 @@
         let physTarget = null;
         let isKicked = false;
 
-        const maxAmmo = { 1: 30, 2: 20, 3: 3, 4: 8, 5: Infinity };
-        let currentAmmo = { 1: 30, 2: 20, 3: 3, 4: 8, 5: Infinity };
-        let isReloading = false;
-        let reloadTimeout = null;
+        let myAmmo = { current: 30, max: 30, isReloading: false };
 
         const weaponStats = {
-            1: { name: "Rifle", rate: 200 },
-            2: { name: "SMG", rate: 50 },
-            3: { name: "Sniper", rate: 2500 },
-            4: { name: "Shotgun", rate: 1000 },
-            5: { name: "PhysGun", rate: 100 }
+            1: { name: "Rifle", rate: 200, maxAmmo: 30 },
+            2: { name: "SMG", rate: 50, maxAmmo: 20 },
+            3: { name: "Sniper", rate: 2500, maxAmmo: 3 },
+            4: { name: "Shotgun", rate: 1000, maxAmmo: 8 },
+            5: { name: "PhysGun", rate: 100, maxAmmo: 0 }
         };
 
         const keys = { w: false, a: false, s: false, d: false };
@@ -242,88 +239,18 @@
         let bullets = {};
         let renderBullets = {};
         let walls = [];
+        let renderWalls = [];
         let medkits = [];
         let chatBubbles = {};
         const clientImageCache = {};
-        const incomingImageChunks = {};
-        const speakingPlayers = {};
+        const pendingImageChunks = {};
+        const lastSpeakerTime = {};
 
         let joyActive = false;
         let joyVector = { x: 0, y: 0 };
         let chatOpen = false;
 
-        let micActive = false;
-        let micMediaStream = null;
-        let micRecorder = null;
-
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-        function updateAmmoUI() {
-            const txt = document.getElementById("ammo-text");
-            if (currentWeapon === 5) {
-                txt.innerText = "∞ / ∞";
-            } else if (isReloading) {
-                txt.innerText = "RELOADING...";
-            } else {
-                txt.innerText = `${currentAmmo[currentWeapon]} / ${maxAmmo[currentWeapon]}`;
-            }
-        }
-
-        function startReload() {
-            if (isReloading || currentWeapon === 5 || currentAmmo[currentWeapon] === maxAmmo[currentWeapon] || isDead) return;
-            
-            isReloading = true;
-            updateAmmoUI();
-
-            let duration = 3000;
-            if (currentWeapon === 1) duration = 3000;
-            else if (currentWeapon === 2) duration = 2400;
-            else if (currentWeapon === 3) duration = 4000;
-            else if (currentWeapon === 4) {
-                const missing = maxAmmo[4] - currentAmmo[4];
-                duration = missing * 600;
-            }
-
-            if (reloadTimeout) clearTimeout(reloadTimeout);
-            reloadTimeout = setTimeout(() => {
-                currentAmmo[currentWeapon] = maxAmmo[currentWeapon];
-                isReloading = false;
-                updateAmmoUI();
-            }, duration);
-        }
-
-        async function toggleMic() {
-            if (micActive) {
-                micActive = false;
-                if (micRecorder && micRecorder.state === "recording") micRecorder.stop();
-                if (micMediaStream) micMediaStream.getTracks().forEach(t => t.stop());
-                micRecorder = null;
-                micMediaStream = null;
-                document.getElementById("mic-btn").classList.remove("active-mic");
-            } else {
-                try {
-                    micMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    const source = micAudioCtx.createMediaStreamSource(micMediaStream);
-                    const dest = micAudioCtx.createMediaStreamDestination();
-                    source.connect(dest);
-
-                    micRecorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 60000 });
-                    micRecorder.ondataavailable = (e) => {
-                        if (e.data.size > 0 && micActive) {
-                            e.data.arrayBuffer().then(buf => {
-                                socket.emit("RemoteEvent", { type: "mic_chunk", data: { id: myId, chunk: buf } });
-                            });
-                        }
-                    };
-                    micRecorder.start(500);
-                    micActive = true;
-                    document.getElementById("mic-btn").classList.add("active-mic");
-                } catch(e) {
-                    alert("Microphone permission denied or unavailable.");
-                }
-            }
-        }
         
         function playSfx(type, posX, posY) {
             const now = audioCtx.currentTime;
@@ -481,6 +408,47 @@
 
         const incomingAudioStreams = {};
 
+        // Microphone Stream System
+        let micActive = false;
+        let micStream = null;
+        let micRecorder = null;
+
+        async function toggleMic() {
+            if (isKicked || isDead) return;
+            const micBtn = document.getElementById("mic-btn");
+            if (!micActive) {
+                try {
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    micRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 60000 });
+                    let chunkIdx = 0;
+                    micRecorder.ondataavailable = (e) => {
+                        if (e.data && e.data.size > 0) {
+                            e.data.arrayBuffer().then(buf => {
+                                socket.emit("RemoteEvent", { type: "mic_chunk", data: { id: myId, chunkIndex: chunkIdx, chunk: buf } });
+                                chunkIdx++;
+                            });
+                        }
+                    };
+                    micRecorder.start(500);
+                    micActive = true;
+                    if (micBtn) micBtn.classList.add("active-mic");
+                } catch(err) {
+                    alert("Could not access microphone.");
+                }
+            } else {
+                if (micRecorder && micRecorder.state !== "inactive") {
+                    try { micRecorder.stop(); } catch(e) {}
+                }
+                if (micStream) {
+                    micStream.getTracks().forEach(track => track.stop());
+                }
+                micActive = false;
+                if (micBtn) micBtn.classList.remove("active-mic");
+            }
+        }
+
+        const incomingMicStreams = {};
+
         socket.on("connect", () => {
             socket.emit("join_virtual_server", { key });
         });
@@ -504,6 +472,13 @@
                         myPos.y = sp.y;
                         myPoints = sp.points || 0;
                         myItems = sp.items || myItems;
+
+                        if (sp.ammo && sp.ammo[currentWeapon] !== undefined) {
+                            myAmmo.current = sp.ammo[currentWeapon];
+                            myAmmo.max = weaponStats[currentWeapon].maxAmmo;
+                            myAmmo.isReloading = sp.isReloading;
+                        }
+                        updateAmmoHUD();
                         
                         document.getElementById("hp").innerText = myHp;
                         document.getElementById("pts").innerText = myPoints;
@@ -512,11 +487,6 @@
 
                         if (prevHp > 0 && myHp <= 0) {
                             stopAllAudioStreams();
-                            currentAmmo = { 1: 30, 2: 20, 3: 3, 4: 8, 5: Infinity };
-                            isReloading = false;
-                            if (reloadTimeout) clearTimeout(reloadTimeout);
-                            updateAmmoUI();
-
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -548,19 +518,21 @@
             } else if (pkt.type === "prop_update_batch") {
                 walls = pkt.data.walls || [];
                 medkits = pkt.data.medkits || [];
-            } else if (pkt.type === "image_chunk_receive") {
-                const { imgId, chunkIndex, totalChunks, chunk } = pkt.data;
-                if (!incomingImageChunks[imgId]) incomingImageChunks[imgId] = [];
-                incomingImageChunks[imgId][chunkIndex] = chunk;
-
+            } else if (pkt.type === "cache_image") {
+                clientImageCache[pkt.data.imgId] = { data: pkt.data.data, element: null };
+            } else if (pkt.type === "cache_image_chunk") {
+                const { imgId, chunkIndex, totalChunks, chunkData } = pkt.data;
+                if (!pendingImageChunks[imgId]) pendingImageChunks[imgId] = [];
+                pendingImageChunks[imgId][chunkIndex] = chunkData;
+                
                 let isComplete = true;
                 for (let i = 0; i < totalChunks; i++) {
-                    if (incomingImageChunks[imgId][i] === undefined) { isComplete = false; break; }
+                    if (pendingImageChunks[imgId][i] === undefined) { isComplete = false; break; }
                 }
                 if (isComplete) {
-                    const fullData = incomingImageChunks[imgId].join('');
+                    const fullData = pendingImageChunks[imgId].join('');
                     clientImageCache[imgId] = { data: fullData, element: null };
-                    delete incomingImageChunks[imgId];
+                    delete pendingImageChunks[imgId];
                 }
             } else if (pkt.type === "uncache_image") {
                 delete clientImageCache[pkt.data.imgId];
@@ -582,47 +554,6 @@
                         if (incomingAudioStreams[sId].audio) incomingAudioStreams[sId].audio.pause();
                         delete incomingAudioStreams[sId];
                     }
-                }
-            } else if (pkt.type === "mic_chunk_receive") {
-                const { id: senderId, chunk } = pkt.data;
-                if (senderId === myId) return;
-
-                speakingPlayers[senderId] = Date.now();
-                const sessionId = `mic_${senderId}`;
-
-                if (!incomingAudioStreams[sessionId]) {
-                    const mediaSource = new MediaSource();
-                    const audio = new Audio();
-                    audio.src = URL.createObjectURL(mediaSource);
-                    audio.volume = 1;
-
-                    incomingAudioStreams[sessionId] = {
-                        mediaSource,
-                        audio,
-                        senderId,
-                        sourceBuffer: null,
-                        queue: [],
-                        isComplete: false,
-                        isPlaying: false
-                    };
-
-                    mediaSource.addEventListener('sourceopen', () => {
-                        try {
-                            const sb = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
-                            incomingAudioStreams[sessionId].sourceBuffer = sb;
-                            sb.addEventListener('updateend', () => processAudioQueue(sessionId));
-                            processAudioQueue(sessionId);
-                        } catch(e) {}
-                    });
-                }
-
-                const streamData = incomingAudioStreams[sessionId];
-                if (chunk) {
-                    if (streamData.queue.length > 5) {
-                        streamData.queue = streamData.queue.slice(-2);
-                    }
-                    streamData.queue.push(chunk);
-                    processAudioQueue(sessionId);
                 }
             } else if (pkt.type === "kicked") {
                 isKicked = true;
@@ -673,8 +604,62 @@
                     streamData.isComplete = true;
                     processAudioQueue(sessionId);
                 }
+            } else if (pkt.type === "mic_chunk_receive") {
+                const { senderId, chunkIndex, chunk } = pkt.data;
+                if (senderId === myId) return;
+
+                lastSpeakerTime[senderId] = Date.now();
+
+                if (!incomingMicStreams[senderId]) {
+                    const mediaSource = new MediaSource();
+                    const audio = new Audio();
+                    audio.src = URL.createObjectURL(mediaSource);
+                    audio.volume = 1;
+
+                    incomingMicStreams[senderId] = {
+                        mediaSource,
+                        audio,
+                        sourceBuffer: null,
+                        queue: [],
+                        isPlaying: false
+                    };
+
+                    mediaSource.addEventListener('sourceopen', () => {
+                        try {
+                            const sb = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
+                            incomingMicStreams[senderId].sourceBuffer = sb;
+                            sb.addEventListener('updateend', () => processMicQueue(senderId));
+                            processMicQueue(senderId);
+                        } catch(e) {}
+                    });
+                }
+
+                const mst = incomingMicStreams[senderId];
+                if (chunk) {
+                    mst.queue.push(chunk);
+                    if (mst.queue.length > 5) {
+                        mst.queue = mst.queue.slice(mst.queue.length - 1);
+                    }
+                    processMicQueue(senderId);
+                }
             }
         });
+
+        function processMicQueue(senderId) {
+            const mst = incomingMicStreams[senderId];
+            if (!mst || !mst.sourceBuffer || mst.sourceBuffer.updating) return;
+
+            if (mst.queue.length > 0) {
+                const nextChunk = mst.queue.shift();
+                try {
+                    mst.sourceBuffer.appendBuffer(nextChunk);
+                    if (!mst.isPlaying && mst.audio) {
+                        mst.isPlaying = true;
+                        mst.audio.play().catch(() => {});
+                    }
+                } catch(e) {}
+            }
+        }
 
         setInterval(() => {
             for (let sId in incomingAudioStreams) {
@@ -692,7 +677,36 @@
                     }
                 }
             }
+
+            for (let sId in incomingMicStreams) {
+                const st = incomingMicStreams[sId];
+                if (st && st.audio) {
+                    const senderPlayer = players[sId] || renderPlayers[sId];
+                    if (senderPlayer) {
+                        const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
+                        const maxDist = 1500;
+                        if (dist > maxDist) {
+                            st.audio.volume = 0;
+                        } else {
+                            st.audio.volume = Math.max(0, 1 - (dist / maxDist));
+                        }
+                    }
+                }
+            }
         }, 200);
+
+        function updateAmmoHUD() {
+            const hud = document.getElementById("ammo-hud");
+            if (currentWeapon === 5) {
+                hud.innerText = "∞";
+                return;
+            }
+            if (myAmmo.isReloading) {
+                hud.innerText = "RELOADING...";
+            } else {
+                hud.innerText = `${myAmmo.current} / ${myAmmo.max}`;
+            }
+        }
 
         function processAudioQueue(sessionId) {
             const streamData = incomingAudioStreams[sessionId];
@@ -898,18 +912,19 @@
 
         function setWeapon(wId) {
             if (wId === 5 && !myItems.physGun) return;
-            if (isReloading) {
-                isReloading = false;
-                if (reloadTimeout) clearTimeout(reloadTimeout);
-            }
             currentWeapon = wId;
-            updateAmmoUI();
             document.getElementById("wname").innerText = weaponStats[wId].name;
             document.querySelectorAll(".mob-weapon-btn").forEach(btn => btn.classList.remove("active"));
             if (document.getElementById(`mob-w${wId}`)) {
                 document.getElementById(`mob-w${wId}`).classList.add("active");
             }
+            updateAmmoHUD();
             socket.emit("RemoteEvent", { type: "switch_weapon", data: { id: myId, weapon: currentWeapon } });
+        }
+
+        function requestReload() {
+            if (isDead || currentWeapon === 5) return;
+            socket.emit("RemoteEvent", { type: "reload_weapon", data: { id: myId, weapon: currentWeapon } });
         }
 
         function isPropMenuOpen() {
@@ -932,7 +947,7 @@
                 const modal = document.getElementById("radio-modal");
                 modal.style.display = modal.style.display === "block" ? "none" : "block";
             } else if (e.key.toLowerCase() === 'r' && !chatOpen) {
-                startReload();
+                requestReload();
             } else if (e.key.toLowerCase() === 'v' && !chatOpen) {
                 toggleMic();
             } else if (!chatOpen) {
@@ -961,7 +976,7 @@
         });
 
         document.getElementById("chat-btn").onclick = toggleChat;
-        document.getElementById("reload-btn").onclick = startReload;
+        document.getElementById("reload-btn").onclick = requestReload;
         document.getElementById("mic-btn").onclick = toggleMic;
         
         const buildBtn = document.getElementById("build-btn");
@@ -1152,18 +1167,11 @@
         });
 
         function tryShoot() {
-            if (isReloading) return;
-            if (currentWeapon !== 5 && currentAmmo[currentWeapon] <= 0) return;
-
+            if (myAmmo.isReloading || (currentWeapon !== 5 && myAmmo.current <= 0)) return;
             const now = Date.now();
             const stat = weaponStats[currentWeapon];
             if (now - lastShot < stat.rate) return;
             lastShot = now;
-
-            if (currentWeapon !== 5) {
-                currentAmmo[currentWeapon]--;
-                updateAmmoUI();
-            }
 
             socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
         }
@@ -1270,19 +1278,6 @@
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(text, 0, 0);
-            ctx.restore();
-        }
-
-        function drawPixelMic(x, y) {
-            ctx.save();
-            ctx.translate(x, y - 56);
-            ctx.fillStyle = "#22c55e";
-            ctx.fillRect(-4, -8, 8, 10);
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(-2, -6, 4, 6);
-            ctx.fillRect(-5, 0, 10, 2);
-            ctx.fillRect(-1, 2, 2, 4);
-            ctx.fillRect(-3, 6, 6, 2);
             ctx.restore();
         }
 
@@ -1422,6 +1417,7 @@
                 ctx.restore();
             });
 
+            const nowTime = Date.now();
             for (let id in renderPlayers) {
                 let p = renderPlayers[id];
                 if (p.hp <= 0) continue;
@@ -1442,6 +1438,11 @@
                 ctx.fillStyle = "#38bdf8";
                 ctx.textAlign = "center";
                 ctx.fillText(id, 0, -42);
+
+                if (lastSpeakerTime[id] && (nowTime - lastSpeakerTime[id] < 500)) {
+                    ctx.font = "12px sans-serif";
+                    ctx.fillText("🎙️", 0, -58);
+                }
 
                 ctx.fillStyle = "#ef4444";
                 ctx.fillRect(-20, -32, 40, 5);
@@ -1480,10 +1481,6 @@
                 }
 
                 ctx.restore();
-
-                if ((id === myId && micActive) || (speakingPlayers[id] && Date.now() - speakingPlayers[id] < 500)) {
-                    drawPixelMic(p.x, p.y);
-                }
 
                 if (id === myId && currentWeapon === 3 && !isDead) {
                     ctx.save();
