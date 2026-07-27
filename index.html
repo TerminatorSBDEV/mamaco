@@ -14,6 +14,8 @@
         .top-btn { background: #3b82f6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
         .top-btn:hover { background: #2563eb; }
 
+        #ammo-ui { position: absolute; bottom: 45px; left: 50%; transform: translateX(-50%); pointer-events: none; font-weight: bold; font-size: 1.4rem; text-shadow: 2px 2px 4px #000; background: rgba(15, 23, 42, 0.8); padding: 4px 16px; border-radius: 8px; border: 1px solid #38bdf8; color: #38bdf8; z-index: 10; }
+
         #joystick { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none; z-index: 10; }
         #stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; pointer-events: none; }
         
@@ -22,6 +24,7 @@
 
         #action-btns { position: absolute; bottom: 40px; right: 210px; display: flex; gap: 10px; z-index: 10; }
         .action-btn { width: 55px; height: 55px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; cursor: pointer; color: #fff; }
+        .action-btn.active-mic { background: rgba(34, 197, 94, 0.6); border-color: #22c55e; }
         
         .mob-weapon-btn { position: absolute; bottom: 105px; width: 48px; height: 48px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; display: none; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; cursor: pointer; z-index: 10; color: #fff; }
         #mob-w1 { right: 210px; }
@@ -72,7 +75,9 @@
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
-    <div id="controls-hint">E / Click 🧱: Spawn Menu | Y: Chat | H: Shop | R: Radio | 1-5: Select Weapon | WASD: Move | Right Click: Shoot/Use</div>
+    <div id="ammo-ui"><span id="ammo-text">30 / 30</span></div>
+
+    <div id="controls-hint">E / Click 🧱: Spawn Menu | Y: Chat | H: Shop | Z: Radio | R: Reload | V: Mic | 1-5: Select Weapon | WASD: Move</div>
     
     <div id="chat-box">
         <div id="chat-messages"></div>
@@ -86,6 +91,8 @@
     
     <div id="action-btns">
         <div id="chat-btn" class="action-btn">💬</div>
+        <div id="reload-btn" class="action-btn">🔄</div>
+        <div id="mic-btn" class="action-btn">🎙️</div>
         <div id="build-btn" class="action-btn" title="Open Spawn Menu">🧱</div>
     </div>
 
@@ -216,6 +223,11 @@
         let physTarget = null;
         let isKicked = false;
 
+        const maxAmmo = { 1: 30, 2: 20, 3: 3, 4: 8, 5: Infinity };
+        let currentAmmo = { 1: 30, 2: 20, 3: 3, 4: 8, 5: Infinity };
+        let isReloading = false;
+        let reloadTimeout = null;
+
         const weaponStats = {
             1: { name: "Rifle", rate: 200 },
             2: { name: "SMG", rate: 50 },
@@ -230,16 +242,88 @@
         let bullets = {};
         let renderBullets = {};
         let walls = [];
-        let renderWalls = [];
         let medkits = [];
         let chatBubbles = {};
         const clientImageCache = {};
+        const incomingImageChunks = {};
+        const speakingPlayers = {};
 
         let joyActive = false;
         let joyVector = { x: 0, y: 0 };
         let chatOpen = false;
 
+        let micActive = false;
+        let micMediaStream = null;
+        let micRecorder = null;
+
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function updateAmmoUI() {
+            const txt = document.getElementById("ammo-text");
+            if (currentWeapon === 5) {
+                txt.innerText = "∞ / ∞";
+            } else if (isReloading) {
+                txt.innerText = "RELOADING...";
+            } else {
+                txt.innerText = `${currentAmmo[currentWeapon]} / ${maxAmmo[currentWeapon]}`;
+            }
+        }
+
+        function startReload() {
+            if (isReloading || currentWeapon === 5 || currentAmmo[currentWeapon] === maxAmmo[currentWeapon] || isDead) return;
+            
+            isReloading = true;
+            updateAmmoUI();
+
+            let duration = 3000;
+            if (currentWeapon === 1) duration = 3000;
+            else if (currentWeapon === 2) duration = 2400;
+            else if (currentWeapon === 3) duration = 4000;
+            else if (currentWeapon === 4) {
+                const missing = maxAmmo[4] - currentAmmo[4];
+                duration = missing * 600;
+            }
+
+            if (reloadTimeout) clearTimeout(reloadTimeout);
+            reloadTimeout = setTimeout(() => {
+                currentAmmo[currentWeapon] = maxAmmo[currentWeapon];
+                isReloading = false;
+                updateAmmoUI();
+            }, duration);
+        }
+
+        async function toggleMic() {
+            if (micActive) {
+                micActive = false;
+                if (micRecorder && micRecorder.state === "recording") micRecorder.stop();
+                if (micMediaStream) micMediaStream.getTracks().forEach(t => t.stop());
+                micRecorder = null;
+                micMediaStream = null;
+                document.getElementById("mic-btn").classList.remove("active-mic");
+            } else {
+                try {
+                    micMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = micAudioCtx.createMediaStreamSource(micMediaStream);
+                    const dest = micAudioCtx.createMediaStreamDestination();
+                    source.connect(dest);
+
+                    micRecorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 60000 });
+                    micRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0 && micActive) {
+                            e.data.arrayBuffer().then(buf => {
+                                socket.emit("RemoteEvent", { type: "mic_chunk", data: { id: myId, chunk: buf } });
+                            });
+                        }
+                    };
+                    micRecorder.start(500);
+                    micActive = true;
+                    document.getElementById("mic-btn").classList.add("active-mic");
+                } catch(e) {
+                    alert("Microphone permission denied or unavailable.");
+                }
+            }
+        }
         
         function playSfx(type, posX, posY) {
             const now = audioCtx.currentTime;
@@ -428,6 +512,11 @@
 
                         if (prevHp > 0 && myHp <= 0) {
                             stopAllAudioStreams();
+                            currentAmmo = { 1: 30, 2: 20, 3: 3, 4: 8, 5: Infinity };
+                            isReloading = false;
+                            if (reloadTimeout) clearTimeout(reloadTimeout);
+                            updateAmmoUI();
+
                             if (myItems.deathSound && localDeathFile) {
                                 prepareAndBroadcastAudio(localDeathFile, "death");
                             }
@@ -459,8 +548,20 @@
             } else if (pkt.type === "prop_update_batch") {
                 walls = pkt.data.walls || [];
                 medkits = pkt.data.medkits || [];
-            } else if (pkt.type === "cache_image") {
-                clientImageCache[pkt.data.imgId] = { data: pkt.data.data, element: null };
+            } else if (pkt.type === "image_chunk_receive") {
+                const { imgId, chunkIndex, totalChunks, chunk } = pkt.data;
+                if (!incomingImageChunks[imgId]) incomingImageChunks[imgId] = [];
+                incomingImageChunks[imgId][chunkIndex] = chunk;
+
+                let isComplete = true;
+                for (let i = 0; i < totalChunks; i++) {
+                    if (incomingImageChunks[imgId][i] === undefined) { isComplete = false; break; }
+                }
+                if (isComplete) {
+                    const fullData = incomingImageChunks[imgId].join('');
+                    clientImageCache[imgId] = { data: fullData, element: null };
+                    delete incomingImageChunks[imgId];
+                }
             } else if (pkt.type === "uncache_image") {
                 delete clientImageCache[pkt.data.imgId];
             } else if (pkt.type === "chat_sync") {
@@ -481,6 +582,47 @@
                         if (incomingAudioStreams[sId].audio) incomingAudioStreams[sId].audio.pause();
                         delete incomingAudioStreams[sId];
                     }
+                }
+            } else if (pkt.type === "mic_chunk_receive") {
+                const { id: senderId, chunk } = pkt.data;
+                if (senderId === myId) return;
+
+                speakingPlayers[senderId] = Date.now();
+                const sessionId = `mic_${senderId}`;
+
+                if (!incomingAudioStreams[sessionId]) {
+                    const mediaSource = new MediaSource();
+                    const audio = new Audio();
+                    audio.src = URL.createObjectURL(mediaSource);
+                    audio.volume = 1;
+
+                    incomingAudioStreams[sessionId] = {
+                        mediaSource,
+                        audio,
+                        senderId,
+                        sourceBuffer: null,
+                        queue: [],
+                        isComplete: false,
+                        isPlaying: false
+                    };
+
+                    mediaSource.addEventListener('sourceopen', () => {
+                        try {
+                            const sb = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
+                            incomingAudioStreams[sessionId].sourceBuffer = sb;
+                            sb.addEventListener('updateend', () => processAudioQueue(sessionId));
+                            processAudioQueue(sessionId);
+                        } catch(e) {}
+                    });
+                }
+
+                const streamData = incomingAudioStreams[sessionId];
+                if (chunk) {
+                    if (streamData.queue.length > 5) {
+                        streamData.queue = streamData.queue.slice(-2);
+                    }
+                    streamData.queue.push(chunk);
+                    processAudioQueue(sessionId);
                 }
             } else if (pkt.type === "kicked") {
                 isKicked = true;
@@ -756,7 +898,12 @@
 
         function setWeapon(wId) {
             if (wId === 5 && !myItems.physGun) return;
+            if (isReloading) {
+                isReloading = false;
+                if (reloadTimeout) clearTimeout(reloadTimeout);
+            }
             currentWeapon = wId;
+            updateAmmoUI();
             document.getElementById("wname").innerText = weaponStats[wId].name;
             document.querySelectorAll(".mob-weapon-btn").forEach(btn => btn.classList.remove("active"));
             if (document.getElementById(`mob-w${wId}`)) {
@@ -781,9 +928,13 @@
             } else if (e.key.toLowerCase() === 'h' && !chatOpen) {
                 const modal = document.getElementById("shop-modal");
                 modal.style.display = modal.style.display === "block" ? "none" : "block";
-            } else if (e.key.toLowerCase() === 'r' && !chatOpen && myItems.radio) {
+            } else if (e.key.toLowerCase() === 'z' && !chatOpen && myItems.radio) {
                 const modal = document.getElementById("radio-modal");
                 modal.style.display = modal.style.display === "block" ? "none" : "block";
+            } else if (e.key.toLowerCase() === 'r' && !chatOpen) {
+                startReload();
+            } else if (e.key.toLowerCase() === 'v' && !chatOpen) {
+                toggleMic();
             } else if (!chatOpen) {
                 if (e.key === '1') setWeapon(1);
                 if (e.key === '2') setWeapon(2);
@@ -810,6 +961,8 @@
         });
 
         document.getElementById("chat-btn").onclick = toggleChat;
+        document.getElementById("reload-btn").onclick = startReload;
+        document.getElementById("mic-btn").onclick = toggleMic;
         
         const buildBtn = document.getElementById("build-btn");
         buildBtn.onclick = () => {
@@ -999,10 +1152,18 @@
         });
 
         function tryShoot() {
+            if (isReloading) return;
+            if (currentWeapon !== 5 && currentAmmo[currentWeapon] <= 0) return;
+
             const now = Date.now();
             const stat = weaponStats[currentWeapon];
             if (now - lastShot < stat.rate) return;
             lastShot = now;
+
+            if (currentWeapon !== 5) {
+                currentAmmo[currentWeapon]--;
+                updateAmmoUI();
+            }
 
             socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
         }
@@ -1109,6 +1270,19 @@
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(text, 0, 0);
+            ctx.restore();
+        }
+
+        function drawPixelMic(x, y) {
+            ctx.save();
+            ctx.translate(x, y - 56);
+            ctx.fillStyle = "#22c55e";
+            ctx.fillRect(-4, -8, 8, 10);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(-2, -6, 4, 6);
+            ctx.fillRect(-5, 0, 10, 2);
+            ctx.fillRect(-1, 2, 2, 4);
+            ctx.fillRect(-3, 6, 6, 2);
             ctx.restore();
         }
 
@@ -1306,6 +1480,10 @@
                 }
 
                 ctx.restore();
+
+                if ((id === myId && micActive) || (speakingPlayers[id] && Date.now() - speakingPlayers[id] < 500)) {
+                    drawPixelMic(p.x, p.y);
+                }
 
                 if (id === myId && currentWeapon === 3 && !isDead) {
                     ctx.save();
