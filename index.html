@@ -204,7 +204,7 @@
             document.getElementById("controls-hint").style.display = "none";
         }
 
-        const link = "https://licensing-accomplish-jul-distributors.trycloudflare.com";
+        const link = "https://legislative-worldcat-stamps-precise.trycloudflare.com";
         const key = "146cf8ce56";
         const socket = io(link, { auth: { token: "default_key" } });
 
@@ -412,6 +412,7 @@
         let micActive = false;
         let micStream = null;
         let micRecorder = null;
+        let micAnalyser = null;
 
         async function toggleMic() {
             if (isKicked || isDead) return;
@@ -419,14 +420,37 @@
             if (!micActive) {
                 try {
                     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                    if (audioCtx.state === "suspended") {
+                        audioCtx.resume();
+                    }
+
+                    const source = audioCtx.createMediaStreamSource(micStream);
+                    micAnalyser = audioCtx.createAnalyser();
+                    micAnalyser.fftSize = 512;
+                    source.connect(micAnalyser);
+
                     micRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 60000 });
                     let chunkIdx = 0;
+
                     micRecorder.ondataavailable = (e) => {
                         if (e.data && e.data.size > 0) {
-                            e.data.arrayBuffer().then(buf => {
-                                socket.emit("RemoteEvent", { type: "mic_chunk", data: { id: myId, chunkIndex: chunkIdx, chunk: buf } });
-                                chunkIdx++;
-                            });
+                            const pcm = new Float32Array(micAnalyser.fftSize);
+                            micAnalyser.getFloatTimeDomainData(pcm);
+                            let sum = 0;
+                            for (let i = 0; i < pcm.length; i++) {
+                                sum += pcm[i] * pcm[i];
+                            }
+                            let rms = Math.sqrt(sum / pcm.length);
+                            let db = rms > 0 ? Math.max(0, 20 * Math.log10(rms) + 60) : 0;
+
+                            if (db > 5) {
+                                lastSpeakerTime[myId] = Date.now();
+                                e.data.arrayBuffer().then(buf => {
+                                    socket.emit("RemoteEvent", { type: "mic_chunk", data: { id: myId, chunkIndex: chunkIdx, chunk: buf, db } });
+                                    chunkIdx++;
+                                });
+                            }
                         }
                     };
                     micRecorder.start(500);
@@ -443,6 +467,7 @@
                     micStream.getTracks().forEach(track => track.stop());
                 }
                 micActive = false;
+                micAnalyser = null;
                 if (micBtn) micBtn.classList.remove("active-mic");
             }
         }
@@ -605,10 +630,14 @@
                     processAudioQueue(sessionId);
                 }
             } else if (pkt.type === "mic_chunk_receive") {
-                const { senderId, chunkIndex, chunk, headerChunk } = pkt.data;
+                const { senderId, chunkIndex, chunk, headerChunk, db } = pkt.data;
                 if (senderId === myId) return;
 
-                lastSpeakerTime[senderId] = Date.now();
+                if (db !== undefined && db > 5) {
+                    lastSpeakerTime[senderId] = Date.now();
+                } else if (db === undefined) {
+                    lastSpeakerTime[senderId] = Date.now();
+                }
 
                 if (chunkIndex === 0 && chunk) {
                     micHeaderCache[senderId] = chunk;
@@ -618,11 +647,19 @@
                     const mediaSource = new MediaSource();
                     const audio = new Audio();
                     audio.src = URL.createObjectURL(mediaSource);
-                    audio.volume = 1;
+                    
+                    let gainNode = null;
+                    try {
+                        const sourceNode = audioCtx.createMediaElementSource(audio);
+                        gainNode = audioCtx.createGain();
+                        sourceNode.connect(gainNode);
+                        gainNode.connect(audioCtx.destination);
+                    } catch(e) {}
 
                     incomingMicStreams[senderId] = {
                         mediaSource,
                         audio,
+                        gainNode,
                         sourceBuffer: null,
                         queue: [],
                         isPlaying: false,
@@ -633,6 +670,7 @@
                     mediaSource.addEventListener('sourceopen', () => {
                         try {
                             const sb = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
+                            sb.mode = 'sequence';
                             incomingMicStreams[senderId].sourceBuffer = sb;
                             sb.addEventListener('updateend', () => processMicQueue(senderId));
                             processMicQueue(senderId);
@@ -660,10 +698,6 @@
                     const headerData = mst.headerChunk instanceof ArrayBuffer ? mst.headerChunk : (mst.headerChunk.buffer ? new Uint8Array(mst.headerChunk.buffer, mst.headerChunk.byteOffset, mst.headerChunk.byteLength) : new Uint8Array(mst.headerChunk));
                     mst.sourceBuffer.appendBuffer(headerData);
                     mst.hasHeader = true;
-                    if (!mst.isPlaying && mst.audio) {
-                        mst.isPlaying = true;
-                        mst.audio.play().catch(() => {});
-                    }
                     return;
                 } catch(e) {
                     mst.hasHeader = true;
@@ -675,8 +709,16 @@
                 try {
                     const chunkData = nextChunk instanceof ArrayBuffer ? nextChunk : (nextChunk.buffer ? new Uint8Array(nextChunk.buffer, nextChunk.byteOffset, nextChunk.byteLength) : new Uint8Array(nextChunk));
                     mst.sourceBuffer.appendBuffer(chunkData);
-                    if (!mst.isPlaying && mst.audio) {
-                        mst.isPlaying = true;
+
+                    if (mst.audio) {
+                        if (audioCtx.state === "suspended") audioCtx.resume();
+                        if (mst.sourceBuffer.buffered.length > 0) {
+                            const start = mst.sourceBuffer.buffered.start(0);
+                            const end = mst.sourceBuffer.buffered.end(mst.sourceBuffer.buffered.length - 1);
+                            if (mst.audio.paused || mst.audio.currentTime < start || mst.audio.currentTime < end - 1.0) {
+                                mst.audio.currentTime = end - 0.1 > start ? end - 0.1 : start;
+                            }
+                        }
                         mst.audio.play().catch(() => {});
                     }
                 } catch(e) {}
@@ -707,11 +749,11 @@
                     if (senderPlayer) {
                         const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
                         const maxDist = 1500;
-                        if (dist > maxDist) {
-                            st.audio.volume = 0;
-                        } else {
-                            st.audio.volume = Math.max(0, 1 - (dist / maxDist));
+                        const vol = (dist > maxDist) ? 0 : Math.max(0, 1 - (dist / maxDist));
+                        if (st.gainNode) {
+                            st.gainNode.gain.value = vol;
                         }
+                        st.audio.volume = vol;
                     }
                 }
             }
@@ -954,6 +996,7 @@
         }
 
         window.addEventListener("keydown", (e) => {
+            if (audioCtx.state === "suspended") audioCtx.resume();
             if (e.key.toLowerCase() === 'y' && !chatOpen) {
                 e.preventDefault();
                 toggleChat();
@@ -1031,6 +1074,7 @@
         });
 
         window.addEventListener("mousedown", (e) => {
+            if (audioCtx.state === "suspended") audioCtx.resume();
             if (chatOpen || isDead || isPropMenuOpen()) return;
             if (e.button === 2) {
                 isMouseDown = true;
@@ -1052,6 +1096,7 @@
         let leftTouchId = null;
 
         joystickEl.addEventListener("touchstart", (e) => {
+            if (audioCtx.state === "suspended") audioCtx.resume();
             if (chatOpen) return;
             const touch = e.changedTouches[0];
             leftTouchId = touch.identifier;
@@ -1100,6 +1145,7 @@
         let isAimShooting = false;
 
         rightJoystickEl.addEventListener("touchstart", (e) => {
+            if (audioCtx.state === "suspended") audioCtx.resume();
             if (chatOpen || isPropMenuOpen()) return;
             const touch = e.changedTouches[0];
             rightTouchId = touch.identifier;
@@ -1150,6 +1196,7 @@
         let physTouchActive = false;
 
         window.addEventListener("touchstart", (e) => {
+            if (audioCtx.state === "suspended") audioCtx.resume();
             if (isDead || chatOpen || isPropMenuOpen()) return;
             const touch = e.touches[0];
             if (touch.clientX > window.innerWidth - 220 && touch.clientY > window.innerHeight - 150) return;
