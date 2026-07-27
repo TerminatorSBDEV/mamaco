@@ -227,7 +227,7 @@
 
         const weaponStats = {
             1: { name: "Rifle", rate: 200, maxAmmo: 30 },
-            2: { name: "SMG", rate: 50, maxAmmo: 20 },
+            2: { name: "SMG", rate: 50, maxAmmo: 30 },
             3: { name: "Sniper", rate: 2500, maxAmmo: 3 },
             4: { name: "Shotgun", rate: 1000, maxAmmo: 8 },
             5: { name: "PhysGun", rate: 100, maxAmmo: 0 }
@@ -245,6 +245,7 @@
         const clientImageCache = {};
         const pendingImageChunks = {};
         const lastSpeakerTime = {};
+        const micHeaderCache = {};
 
         let joyActive = false;
         let joyVector = { x: 0, y: 0 };
@@ -408,7 +409,6 @@
 
         const incomingAudioStreams = {};
 
-        // Microphone Stream System
         let micActive = false;
         let micStream = null;
         let micRecorder = null;
@@ -605,10 +605,14 @@
                     processAudioQueue(sessionId);
                 }
             } else if (pkt.type === "mic_chunk_receive") {
-                const { senderId, chunkIndex, chunk } = pkt.data;
+                const { senderId, chunkIndex, chunk, headerChunk } = pkt.data;
                 if (senderId === myId) return;
 
                 lastSpeakerTime[senderId] = Date.now();
+
+                if (chunkIndex === 0 && chunk) {
+                    micHeaderCache[senderId] = chunk;
+                }
 
                 if (!incomingMicStreams[senderId]) {
                     const mediaSource = new MediaSource();
@@ -621,7 +625,9 @@
                         audio,
                         sourceBuffer: null,
                         queue: [],
-                        isPlaying: false
+                        isPlaying: false,
+                        hasHeader: false,
+                        headerChunk: headerChunk || micHeaderCache[senderId] || (chunkIndex === 0 ? chunk : null)
                     };
 
                     mediaSource.addEventListener('sourceopen', () => {
@@ -649,10 +655,26 @@
             const mst = incomingMicStreams[senderId];
             if (!mst || !mst.sourceBuffer || mst.sourceBuffer.updating) return;
 
+            if (!mst.hasHeader && mst.headerChunk) {
+                try {
+                    const headerData = mst.headerChunk instanceof ArrayBuffer ? mst.headerChunk : (mst.headerChunk.buffer ? new Uint8Array(mst.headerChunk.buffer, mst.headerChunk.byteOffset, mst.headerChunk.byteLength) : new Uint8Array(mst.headerChunk));
+                    mst.sourceBuffer.appendBuffer(headerData);
+                    mst.hasHeader = true;
+                    if (!mst.isPlaying && mst.audio) {
+                        mst.isPlaying = true;
+                        mst.audio.play().catch(() => {});
+                    }
+                    return;
+                } catch(e) {
+                    mst.hasHeader = true;
+                }
+            }
+
             if (mst.queue.length > 0) {
                 const nextChunk = mst.queue.shift();
                 try {
-                    mst.sourceBuffer.appendBuffer(nextChunk);
+                    const chunkData = nextChunk instanceof ArrayBuffer ? nextChunk : (nextChunk.buffer ? new Uint8Array(nextChunk.buffer, nextChunk.byteOffset, nextChunk.byteLength) : new Uint8Array(nextChunk));
+                    mst.sourceBuffer.appendBuffer(chunkData);
                     if (!mst.isPlaying && mst.audio) {
                         mst.isPlaying = true;
                         mst.audio.play().catch(() => {});
