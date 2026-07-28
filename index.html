@@ -13,6 +13,9 @@
         .top-btn { background: #3b82f6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
         .top-btn:hover { background: #2563eb; }
 
+        #settings-btn-top { position: absolute; top: 10px; left: 340px; z-index: 10; background: #475569; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        #settings-btn-top:hover { background: #64748b; }
+
         #ammo-hud { position: absolute; bottom: 15px; right: 20px; font-weight: bold; font-size: 1.5rem; text-shadow: 2px 2px 4px #000; z-index: 10; color: #facc15; pointer-events: none; }
 
         #joystick { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none; z-index: 10; }
@@ -43,17 +46,14 @@
             #chat-box { width: 180px; height: 130px; font-size: 0.75rem; }
             #chat-messages { font-size: 0.75rem; padding: 4px; }
             #chat-input { font-size: 0.75rem; padding: 4px; }
+            #settings-btn-top { left: 10px; top: 40px; }
         }
 
         #shop-modal, #radio-modal, #gmod-modal, #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
         .modal-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; text-align: center; }
-        .shop-item { margin-bottom: 12px; padding: 8px; background: #1e293b; border-radius: 6px; }
-        .shop-item button { width: 100%; padding: 6px; margin-top: 6px; background: #38bdf8; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #0f172a; }
+        .shop-item, .setting-item { margin-bottom: 12px; padding: 8px; background: #1e293b; border-radius: 6px; }
+        .shop-item button, .setting-item button, .setting-item select { width: 100%; padding: 6px; margin-top: 6px; background: #38bdf8; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #0f172a; }
         .shop-item button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
-
-        .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.85rem; }
-        .setting-row select, .setting-row button { background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; }
-        .warning-box { font-size: 0.75rem; color: #ef4444; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; padding: 6px; border-radius: 4px; margin-bottom: 10px; line-height: 1.1; }
 
         #gmod-modal { width: 320px; background: #1e293b; border: 2px solid #64748b; }
         .gmod-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
@@ -74,10 +74,11 @@
         HP: <span id="hp">100</span> | Points: <span id="pts">0</span> | Gun: <span id="wname">Rifle</span> | <span id="status">Connecting...</span>
     </div>
 
+    <button id="settings-btn-top">⚙️ Settings</button>
+
     <div id="ammo-hud">30 / 30</div>
 
     <div id="top-btns">
-        <button id="settings-btn-top" class="top-btn">⚙️ Settings</button>
         <button id="shop-btn-top" class="top-btn">Shop [H]</button>
     </div>
 
@@ -107,35 +108,29 @@
     <div id="mob-w5" class="mob-weapon-btn">W5</div>
 
     <div id="settings-modal">
-        <div class="modal-title">Settings</div>
-        <div class="setting-row">
-            <span>Debug Ping & Packets</span>
-            <button id="set-btn-debug" onclick="toggleSetting('debugPing')">OFF</button>
+        <div class="modal-title">SETTINGS</div>
+        <div class="setting-item">
+            <div><strong>Debug Ping and Packets</strong></div>
+            <button id="set-debug-btn">OFF</button>
         </div>
-        <div class="setting-row">
-            <span>Client-Sided Calc</span>
-            <button id="set-btn-clientcalc" onclick="toggleSetting('clientSideCalc')">OFF</button>
+        <div class="setting-item">
+            <div><strong>Client-Sided Calculations</strong></div>
+            <div style="font-size: 0.7rem; color: #f87171; margin-top: 2px;">⚠️ WARNING! THIS CAN INCREASE THE RISKS OF GETTING KICKED! ⚠️</div>
+            <button id="set-clientcalc-btn">OFF</button>
         </div>
-        <div id="client-calc-warn" class="warning-box" style="display:none;">
-            ⚠ WARNING! THIS CAN INCREASE THE RISKS OF GETTING KICKED! Your client calculates movement and actions. Server anticheat will monitor you closely.
+        <div class="setting-item">
+            <div><strong>Sounds</strong></div>
+            <button id="set-sounds-btn">ON</button>
         </div>
-        <div class="setting-row">
-            <span>Sounds</span>
-            <button id="set-btn-sounds" onclick="toggleSetting('sounds')">ON</button>
+        <div class="setting-item">
+            <div><strong>Automatic Reloading</strong></div>
+            <button id="set-autoreload-btn">OFF</button>
         </div>
-        <div class="setting-row">
-            <span>Auto Reloading</span>
-            <button id="set-btn-autoreload" onclick="toggleSetting('autoReload')">OFF</button>
+        <div class="setting-item">
+            <div><strong>Lerp Interpolation</strong></div>
+            <button id="set-lerpmode-btn">Linear</button>
         </div>
-        <div class="setting-row">
-            <span>Lerp Interpolation</span>
-            <select id="set-select-lerp" onchange="changeLerpSetting(this.value)">
-                <option value="linear">Linear</option>
-                <option value="smooth">Smooth</option>
-                <option value="constant">Constant</option>
-            </select>
-        </div>
-        <button onclick="document.getElementById('settings-modal').style.display='none'" style="width:100%; background:#38bdf8; border:none; color:#0f172a; font-weight:bold; padding:6px; border-radius:4px; margin-top:8px; cursor:pointer;">Close</button>
+        <button onclick="document.getElementById('settings-modal').style.display='none'" style="width:100%; background:#ef4444; border:none; color:white; padding:6px; border-radius:4px; margin-top:8px; cursor:pointer;">Close</button>
     </div>
 
     <div id="shop-modal">
@@ -263,38 +258,13 @@
 
         const settings = {
             debugPing: false,
-            clientSideCalc: false,
+            clientCalc: false,
             sounds: true,
             autoReload: false,
-            lerpMode: "linear"
+            lerpMode: 'Linear'
         };
 
-        function toggleSetting(key) {
-            if (key === 'debugPing') {
-                settings.debugPing = !settings.debugPing;
-                document.getElementById('set-btn-debug').innerText = settings.debugPing ? "ON" : "OFF";
-            } else if (key === 'clientSideCalc') {
-                settings.clientSideCalc = !settings.clientSideCalc;
-                document.getElementById('set-btn-clientcalc').innerText = settings.clientSideCalc ? "ON" : "OFF";
-                document.getElementById('client-calc-warn').style.display = settings.clientSideCalc ? "block" : "none";
-                socket.emit("RemoteEvent", { type: "toggle_client_calc", data: { id: myId, enabled: settings.clientSideCalc } });
-            } else if (key === 'sounds') {
-                settings.sounds = !settings.sounds;
-                document.getElementById('set-btn-sounds').innerText = settings.sounds ? "ON" : "OFF";
-            } else if (key === 'autoReload') {
-                settings.autoReload = !settings.autoReload;
-                document.getElementById('set-btn-autoreload').innerText = settings.autoReload ? "ON" : "OFF";
-            }
-        }
-
-        function changeLerpSetting(val) {
-            settings.lerpMode = val;
-        }
-
-        document.getElementById("settings-btn-top").onclick = () => {
-            const modal = document.getElementById("settings-modal");
-            modal.style.display = modal.style.display === "block" ? "none" : "block";
-        };
+        const playerStats = {};
 
         const weaponStats = {
             1: { name: "Rifle", rate: 200, maxAmmo: 30 },
@@ -323,18 +293,17 @@
         let chatOpen = false;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        let noiseBuffer = null;
-        function getNoiseBuffer() {
-            if (noiseBuffer) return noiseBuffer;
-            const bufferSize = audioCtx.sampleRate * 1;
-            noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            const output = noiseBuffer.getChannelData(0);
+
+        function createNoiseBuffer() {
+            const bufferSize = audioCtx.sampleRate * 0.5;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = buffer.getChannelData(0);
             for (let i = 0; i < bufferSize; i++) {
                 output[i] = Math.random() * 2 - 1;
             }
-            return noiseBuffer;
+            return buffer;
         }
+        const noiseBuffer = createNoiseBuffer();
 
         function playSfx(type, posX, posY) {
             if (!settings.sounds) return;
@@ -352,105 +321,63 @@
             gain.connect(audioCtx.destination);
 
             if (type === 'rifle') {
-                const noise = audioCtx.createBufferSource();
-                noise.buffer = getNoiseBuffer();
-                const filter = audioCtx.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.setValueAtTime(1200, now);
-                filter.frequency.exponentialRampToValueAtTime(100, now + 0.18);
-
-                const noiseGain = audioCtx.createGain();
-                noiseGain.gain.setValueAtTime(0.8, now);
-                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
-
-                const subOsc = audioCtx.createOscillator();
-                subOsc.type = 'triangle';
-                subOsc.frequency.setValueAtTime(160, now);
-                subOsc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
-
-                const subGain = audioCtx.createGain();
-                subGain.gain.setValueAtTime(0.6, now);
-                subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-
-                noise.connect(filter);
-                filter.connect(noiseGain);
-                noiseGain.connect(gain);
-
-                subOsc.connect(subGain);
-                subGain.connect(gain);
-
-                noise.start(now);
-                noise.stop(now + 0.18);
-                subOsc.start(now);
-                subOsc.stop(now + 0.15);
-            } else if (type === 'smg') {
-                const noise = audioCtx.createBufferSource();
-                noise.buffer = getNoiseBuffer();
+                const whiteNoise = audioCtx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
                 const filter = audioCtx.createBiquadFilter();
                 filter.type = 'bandpass';
-                filter.frequency.setValueAtTime(1800, now);
-                filter.frequency.exponentialRampToValueAtTime(200, now + 0.08);
-
-                const noiseGain = audioCtx.createGain();
-                noiseGain.gain.setValueAtTime(0.6, now);
-                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
-
-                noise.connect(filter);
-                filter.connect(noiseGain);
-                noiseGain.connect(gain);
-
-                noise.start(now);
-                noise.stop(now + 0.08);
+                filter.frequency.setValueAtTime(1000, now);
+                filter.Q.setValueAtTime(3, now);
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                whiteNoise.start(now);
+                whiteNoise.stop(now + 0.18);
+            } else if (type === 'smg') {
+                const whiteNoise = audioCtx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.setValueAtTime(1200, now);
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                whiteNoise.start(now);
+                whiteNoise.stop(now + 0.09);
             } else if (type === 'sniper') {
-                const noise = audioCtx.createBufferSource();
-                noise.buffer = getNoiseBuffer();
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.45);
+                const whiteNoise = audioCtx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
                 const filter = audioCtx.createBiquadFilter();
                 filter.type = 'lowpass';
-                filter.frequency.setValueAtTime(2500, now);
-                filter.frequency.exponentialRampToValueAtTime(60, now + 0.4);
-
-                const noiseGain = audioCtx.createGain();
-                noiseGain.gain.setValueAtTime(1.0, now);
-                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-
-                const subOsc = audioCtx.createOscillator();
-                subOsc.type = 'sawtooth';
-                subOsc.frequency.setValueAtTime(220, now);
-                subOsc.frequency.exponentialRampToValueAtTime(20, now + 0.35);
-
-                const subGain = audioCtx.createGain();
-                subGain.gain.setValueAtTime(0.8, now);
-                subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-
-                noise.connect(filter);
-                filter.connect(noiseGain);
-                noiseGain.connect(gain);
-
-                subOsc.connect(subGain);
-                subGain.connect(gain);
-
-                noise.start(now);
-                noise.stop(now + 0.4);
-                subOsc.start(now);
-                subOsc.stop(now + 0.35);
+                filter.frequency.setValueAtTime(3000, now);
+                filter.frequency.exponentialRampToValueAtTime(100, now + 0.45);
+                gain.gain.setValueAtTime(1.0, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+                osc.connect(gain);
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                osc.start(now);
+                whiteNoise.start(now);
+                osc.stop(now + 0.45);
+                whiteNoise.stop(now + 0.45);
             } else if (type === 'shotgun') {
-                const noise = audioCtx.createBufferSource();
-                noise.buffer = getNoiseBuffer();
+                const whiteNoise = audioCtx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
                 const filter = audioCtx.createBiquadFilter();
                 filter.type = 'lowpass';
                 filter.frequency.setValueAtTime(1500, now);
-                filter.frequency.exponentialRampToValueAtTime(80, now + 0.3);
-
-                const noiseGain = audioCtx.createGain();
-                noiseGain.gain.setValueAtTime(0.9, now);
-                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-
-                noise.connect(filter);
-                filter.connect(noiseGain);
-                noiseGain.connect(gain);
-
-                noise.start(now);
-                noise.stop(now + 0.3);
+                filter.frequency.exponentialRampToValueAtTime(80, now + 0.32);
+                gain.gain.setValueAtTime(0.9, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                whiteNoise.start(now);
+                whiteNoise.stop(now + 0.32);
             } else if (type === 'hit_wall') {
                 const osc = audioCtx.createOscillator();
                 osc.type = 'square';
@@ -566,6 +493,17 @@
         let micRecorder = null;
         let micAnalyser = null;
 
+        function destroyMicStream(senderId) {
+            if (incomingMicStreams[senderId]) {
+                const st = incomingMicStreams[senderId];
+                if (st.audio) {
+                    st.audio.pause();
+                    st.audio.src = "";
+                }
+                delete incomingMicStreams[senderId];
+            }
+        }
+
         async function toggleMic() {
             if (isKicked || isDead) return;
             const micBtn = document.getElementById("mic-btn");
@@ -618,22 +556,10 @@
                 if (micStream) {
                     micStream.getTracks().forEach(track => track.stop());
                 }
+                socket.emit("RemoteEvent", { type: "mic_stop", data: { id: myId } });
                 micActive = false;
                 micAnalyser = null;
                 if (micBtn) micBtn.classList.remove("active-mic");
-                socket.emit("RemoteEvent", { type: "mic_mute", data: { id: myId } });
-            }
-        }
-
-        function destroyMicStream(senderId) {
-            if (incomingMicStreams[senderId]) {
-                try {
-                    if (incomingMicStreams[senderId].audio) {
-                        incomingMicStreams[senderId].audio.pause();
-                        incomingMicStreams[senderId].audio.src = "";
-                    }
-                } catch(e) {}
-                delete incomingMicStreams[senderId];
             }
         }
 
@@ -648,14 +574,6 @@
             socket.emit("RemoteEvent", { type: "player_join", data: { id: myId, color: myColor, x: myPos.x, y: myPos.y, weapon: currentWeapon } });
         });
 
-        let lastPingSent = 0;
-        setInterval(() => {
-            if (socket.connected) {
-                lastPingSent = Date.now();
-                socket.emit("RemoteEvent", { type: "ping_check", data: { id: myId, clientTime: lastPingSent } });
-            }
-        }, 1000);
-
         socket.on("RemoteEvent", (pkt) => {
             if (isKicked) return;
             
@@ -666,7 +584,7 @@
                     if (id === myId) {
                         let prevHp = myHp;
                         myHp = sp.hp;
-                        if (!settings.clientSideCalc) {
+                        if (!settings.clientCalc) {
                             myPos.x = sp.x;
                             myPos.y = sp.y;
                         }
@@ -679,6 +597,10 @@
                             myAmmo.isReloading = sp.isReloading;
                         }
                         updateAmmoHUD();
+
+                        if (myAmmo.current === 0 && !myAmmo.isReloading && settings.autoReload && currentWeapon !== 5 && !isDead) {
+                            requestReload();
+                        }
                         
                         document.getElementById("hp").innerText = myHp;
                         document.getElementById("pts").innerText = myPoints;
@@ -702,7 +624,7 @@
                     }
 
                     if (!renderPlayers[id]) {
-                        renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1, ping: sp.ping || 0, kbps: sp.kbps || 0 };
+                        renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1 };
                     }
                     players[id] = sp;
                 }
@@ -748,6 +670,10 @@
                 };
             } else if (pkt.type === "sfx") {
                 playSfx(pkt.data.sfxType, pkt.data.x, pkt.data.y);
+            } else if (pkt.type === "ping_reply") {
+                if (pkt.data.stats) {
+                    Object.assign(playerStats, pkt.data.stats);
+                }
             } else if (pkt.type === "stop_player_audio") {
                 for (let sId in incomingAudioStreams) {
                     if (incomingAudioStreams[sId] && incomingAudioStreams[sId].senderId === pkt.data.id) {
@@ -755,8 +681,8 @@
                         delete incomingAudioStreams[sId];
                     }
                 }
-            } else if (pkt.type === "mic_mute_receive") {
-                destroyMicStream(pkt.data.senderId);
+            } else if (pkt.type === "mic_stop") {
+                destroyMicStream(pkt.data.id);
             } else if (pkt.type === "kicked") {
                 isKicked = true;
                 socket.disconnect();
@@ -764,10 +690,8 @@
                 alert("You have been kicked from the server!");
             } else if (pkt.type === "medkit_sfx") {
                 try {
-                    if (settings.sounds) {
-                        const audio = new Audio(pkt.data.base64);
-                        audio.play().catch(()=>{});
-                    }
+                    const audio = new Audio(pkt.data.base64);
+                    if (settings.sounds) audio.play().catch(()=>{});
                 } catch(e) {}
             } else if (pkt.type === "audio_chunk_receive") {
                 const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
@@ -814,9 +738,11 @@
 
                 if (db !== undefined && db > 5) {
                     lastSpeakerTime[senderId] = Date.now();
+                } else if (db === undefined) {
+                    lastSpeakerTime[senderId] = Date.now();
                 }
 
-                if (chunkIndex === 0) {
+                if (chunkIndex === 0 && chunk) {
                     micHeaderCache[senderId] = chunk;
                     destroyMicStream(senderId);
                 }
@@ -825,7 +751,7 @@
                     const mediaSource = new MediaSource();
                     const audio = new Audio();
                     audio.src = URL.createObjectURL(mediaSource);
-
+                    
                     let gainNode = null;
                     try {
                         const sourceNode = audioCtx.createMediaElementSource(audio);
@@ -897,13 +823,17 @@
                                 mst.audio.currentTime = end - 0.1 > start ? end - 0.1 : start;
                             }
                         }
-                        if (settings.sounds) {
-                            mst.audio.play().catch(() => {});
-                        }
+                        if (settings.sounds) mst.audio.play().catch(() => {});
                     }
                 } catch(e) {}
             }
         }
+
+        setInterval(() => {
+            if (settings.debugPing) {
+                socket.emit("RemoteEvent", { type: "ping_check", data: { id: myId, timestamp: Date.now() } });
+            }
+        }, 1000);
 
         setInterval(() => {
             for (let sId in incomingAudioStreams) {
@@ -913,8 +843,11 @@
                     if (senderPlayer) {
                         const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
                         const maxDist = 1500;
-                        const vol = (dist > maxDist || !settings.sounds) ? 0 : Math.max(0, 1 - (dist / maxDist));
-                        st.audio.volume = vol;
+                        if (dist > maxDist || !settings.sounds) {
+                            st.audio.volume = 0;
+                        } else {
+                            st.audio.volume = Math.max(0, 1 - (dist / maxDist));
+                        }
                     }
                 }
             }
@@ -957,9 +890,9 @@
                 const nextChunk = streamData.queue.shift();
                 try {
                     streamData.sourceBuffer.appendBuffer(nextChunk);
-                    if (!streamData.isPlaying && streamData.audio && settings.sounds) {
+                    if (!streamData.isPlaying && streamData.audio) {
                         streamData.isPlaying = true;
-                        streamData.audio.play().catch(() => {});
+                        if (settings.sounds) streamData.audio.play().catch(() => {});
                     }
                 } catch(e) {}
             } else if (streamData.isComplete && streamData.mediaSource && streamData.mediaSource.readyState === 'open') {
@@ -1018,6 +951,39 @@
                 btnPhys.disabled = myPoints < 500;
             }
         }
+
+        document.getElementById("settings-btn-top").onclick = () => {
+            const modal = document.getElementById("settings-modal");
+            modal.style.display = modal.style.display === "block" ? "none" : "block";
+        };
+
+        document.getElementById("set-debug-btn").onclick = (e) => {
+            settings.debugPing = !settings.debugPing;
+            e.target.innerText = settings.debugPing ? "ON" : "OFF";
+        };
+
+        document.getElementById("set-clientcalc-btn").onclick = (e) => {
+            settings.clientCalc = !settings.clientCalc;
+            e.target.innerText = settings.clientCalc ? "ON" : "OFF";
+            socket.emit("RemoteEvent", { type: "client_calc_mode", data: { id: myId, enabled: settings.clientCalc } });
+        };
+
+        document.getElementById("set-sounds-btn").onclick = (e) => {
+            settings.sounds = !settings.sounds;
+            e.target.innerText = settings.sounds ? "ON" : "OFF";
+        };
+
+        document.getElementById("set-autoreload-btn").onclick = (e) => {
+            settings.autoReload = !settings.autoReload;
+            e.target.innerText = settings.autoReload ? "ON" : "OFF";
+        };
+
+        document.getElementById("set-lerpmode-btn").onclick = (e) => {
+            if (settings.lerpMode === 'Linear') settings.lerpMode = 'Smooth';
+            else if (settings.lerpMode === 'Smooth') settings.lerpMode = 'Constant';
+            else settings.lerpMode = 'Linear';
+            e.target.innerText = settings.lerpMode;
+        };
 
         document.getElementById("shop-btn-top").onclick = () => {
             const modal = document.getElementById("shop-modal");
@@ -1419,14 +1385,7 @@
             if (now - lastShot < stat.rate) return;
             lastShot = now;
 
-            if (settings.clientSideCalc) {
-                myAmmo.current--;
-                updateAmmoHUD();
-                playSfx(currentWeapon === 1 ? 'rifle' : (currentWeapon === 2 ? 'smg' : (currentWeapon === 3 ? 'sniper' : 'shotgun')), myPos.x, myPos.y);
-                socket.emit("RemoteEvent", { type: "client_calc_fire", data: { id: myId, x: myPos.x, y: myPos.y, angle: aimAngle, weapon: currentWeapon } });
-            } else {
-                socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
-            }
+            socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
         }
 
         function startPhysGunDrag() {
@@ -1454,52 +1413,24 @@
             physTarget = null;
         }
 
-        function checkPlayerWallCollisionClient(nextX, nextY) {
-            const radius = 20;
-            for (let w of walls) {
-                if (w.type === 'wall') {
-                    const wallVisualAngle = w.angle + Math.PI / 2;
-                    const cos = Math.cos(-wallVisualAngle);
-                    const sin = Math.sin(-wallVisualAngle);
-                    const dx = nextX - w.x;
-                    const dy = nextY - w.y;
-                    const localX = dx * cos - dy * sin;
-                    const localY = dx * sin + dy * cos;
-
-                    const halfW = 60;
-                    const halfH = 10;
-                    const closestX = Math.max(-halfW, Math.min(localX, halfW));
-                    const closestY = Math.max(-halfH, Math.min(localY, halfH));
-                    const distanceSq = ((localX - closestX) ** 2) + ((localY - closestY) ** 2);
-
-                    if (distanceSq < (radius * radius)) return true;
-                } else {
-                    if (Math.hypot(nextX - w.x, nextY - w.y) < (radius + 25)) return true;
-                }
-            }
-            return false;
-        }
-
         function lerpAngle(a, b, t) {
+            if (settings.lerpMode === 'Constant') return b;
             let diff = (b - a) % (Math.PI * 2);
             if (diff < -Math.PI) diff += Math.PI * 2;
             if (diff > Math.PI) diff -= Math.PI * 2;
-            return a + diff * t;
+            let factor = (settings.lerpMode === 'Smooth') ? t * t * (3 - 2 * t) : t;
+            return a + diff * factor;
         }
 
-        function lerpVal(a, b, factor) {
-            if (settings.lerpMode === "constant") return b;
-            if (settings.lerpMode === "smooth") return a + (b - a) * (factor * 0.5);
+        function lerp(a, b, t) {
+            if (settings.lerpMode === 'Constant') return b;
+            let factor = (settings.lerpMode === 'Smooth') ? t * t * (3 - 2 * t) : t;
             return a + (b - a) * factor;
         }
 
         let lastInputEmit = 0;
         function update() {
             if (isKicked) return;
-
-            if (settings.autoReload && myAmmo.current === 0 && !myAmmo.isReloading && currentWeapon !== 5 && !isDead) {
-                requestReload();
-            }
 
             if (!isDead && !chatOpen) {
                 const screenCenterX = canvas.width / 2;
@@ -1509,57 +1440,39 @@
                     aimAngle = Math.atan2(mousePos.y - screenCenterY, mousePos.x - screenCenterX);
                 }
 
-                if (settings.clientSideCalc) {
-                    let speed = 6;
-                    let dx = 0;
-                    let dy = 0;
-
-                    if (isMobile) {
-                        dx = joyVector.x * speed;
-                        dy = joyVector.y * speed;
-                    } else {
-                        if (keys.w) dy -= speed;
-                        if (keys.s) dy += speed;
-                        if (keys.a) dx -= speed;
-                        if (keys.d) dx += speed;
-                    }
-
-                    let nextX = Math.max(0, Math.min(3000, myPos.x + dx));
-                    if (!checkPlayerWallCollisionClient(nextX, myPos.y)) {
-                        myPos.x = nextX;
-                    }
-                    let nextY = Math.max(0, Math.min(3000, myPos.y + dy));
-                    if (!checkPlayerWallCollisionClient(myPos.x, nextY)) {
-                        myPos.y = nextY;
-                    }
-
-                    if (renderPlayers[myId]) {
-                        renderPlayers[myId].x = myPos.x;
-                        renderPlayers[myId].y = myPos.y;
-                        renderPlayers[myId].angle = aimAngle;
-                    }
-                }
-
                 if (((isMouseDown && currentWeapon !== 5) || isAimShooting) && !isPropMenuOpen()) {
                     tryShoot();
+                }
+
+                let speed = 6;
+                let dx = 0;
+                let dy = 0;
+                if (isMobile) {
+                    dx = joyVector.x * speed;
+                    dy = joyVector.y * speed;
+                } else {
+                    if (keys.w) dy -= speed;
+                    if (keys.s) dy += speed;
+                    if (keys.a) dx -= speed;
+                    if (keys.d) dx += speed;
+                }
+
+                if (settings.clientCalc) {
+                    myPos.x = Math.max(0, Math.min(3000, myPos.x + dx));
+                    myPos.y = Math.max(0, Math.min(3000, myPos.y + dy));
                 }
 
                 if (currentWeapon === 5 && isMouseDown && physTarget) {
                     const targetWorldX = myPos.x + (mousePos.x - screenCenterX);
                     const targetWorldY = myPos.y + (mousePos.y - screenCenterY);
-                    if (settings.clientSideCalc) {
-                        if (physTarget.type === 'player' && renderPlayers[physTarget.id]) {
-                            renderPlayers[physTarget.id].x += (targetWorldX - renderPlayers[physTarget.id].x) * 0.2;
-                            renderPlayers[physTarget.id].y += (targetWorldY - renderPlayers[physTarget.id].y) * 0.2;
-                        } else if (physTarget.type === 'wall' && walls[physTarget.wallIndex]) {
-                            walls[physTarget.wallIndex].x += (targetWorldX - walls[physTarget.wallIndex].x) * 0.2;
-                            walls[physTarget.wallIndex].y += (targetWorldY - walls[physTarget.wallIndex].y) * 0.2;
-                        }
+                    if (settings.clientCalc) {
+                        socket.emit("RemoteEvent", { type: "client_calc_update", data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY, x: myPos.x, y: myPos.y, angle: aimAngle } });
+                    } else {
+                        socket.emit("RemoteEvent", { 
+                            type: "phys_drag", 
+                            data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY } 
+                        });
                     }
-                    socket.emit("RemoteEvent", { 
-                        type: "phys_drag", 
-                        data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY } 
-                    });
                 }
 
                 let inputData = isMobile ? { vector: joyVector } : { w: keys.w, a: keys.a, s: keys.s, d: keys.d };
@@ -1567,8 +1480,8 @@
                 const now = Date.now();
                 if (now - lastInputEmit >= 1000 / 15) {
                     lastInputEmit = now;
-                    if (settings.clientSideCalc) {
-                        socket.emit("RemoteEvent", { type: "client_calc_input", data: { id: myId, x: myPos.x, y: myPos.y, angle: aimAngle, color: myColor, weapon: currentWeapon } });
+                    if (settings.clientCalc) {
+                        socket.emit("RemoteEvent", { type: "client_calc_update", data: { id: myId, x: myPos.x, y: myPos.y, angle: aimAngle, color: myColor, weapon: currentWeapon } });
                     } else {
                         socket.emit("RemoteEvent", { type: "player_input", data: { id: myId, input: inputData, angle: aimAngle, color: myColor, weapon: currentWeapon } });
                     }
@@ -1578,8 +1491,8 @@
             for (let bId in renderBullets) {
                 const rb = renderBullets[bId];
                 if (bullets[bId]) {
-                    rb.x = lerpVal(rb.x, bullets[bId].x, 0.35);
-                    rb.y = lerpVal(rb.y, bullets[bId].y, 0.35);
+                    rb.x = lerp(rb.x, bullets[bId].x, 0.35);
+                    rb.y = lerp(rb.y, bullets[bId].y, 0.35);
                 } else {
                     delete renderBullets[bId];
                 }
@@ -1651,18 +1564,14 @@
             for (let id in players) {
                 let sp = players[id];
                 if (!renderPlayers[id]) {
-                    renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1, ping: sp.ping || 0, kbps: sp.kbps || 0 };
+                    renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1 };
                 } else {
-                    if (id !== myId || !settings.clientSideCalc) {
-                        renderPlayers[id].x = lerpVal(renderPlayers[id].x, sp.x, 0.3);
-                        renderPlayers[id].y = lerpVal(renderPlayers[id].y, sp.y, 0.3);
-                        renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, 0.3);
-                    }
+                    renderPlayers[id].x = lerp(renderPlayers[id].x, sp.x, 0.3);
+                    renderPlayers[id].y = lerp(renderPlayers[id].y, sp.y, 0.3);
+                    renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, 0.3);
                     renderPlayers[id].color = sp.color;
                     renderPlayers[id].hp = sp.hp;
                     renderPlayers[id].weapon = sp.weapon || 1;
-                    renderPlayers[id].ping = sp.ping || 0;
-                    renderPlayers[id].kbps = sp.kbps || 0;
                 }
             }
 
@@ -1773,14 +1682,15 @@
                 ctx.fillText(id, 0, -42);
 
                 if (settings.debugPing) {
-                    ctx.font = "10px sans-serif";
+                    const st = playerStats[id] || { ping: 0, kbps: 0 };
+                    ctx.font = "bold 10px sans-serif";
                     ctx.fillStyle = "#facc15";
-                    ctx.fillText(`Ping: ${p.ping || 0}ms sent: ${(p.kbps || 0).toFixed(1)}kb`, 0, -56);
+                    ctx.fillText(`Ping: ${st.ping}ms sent: ${st.kbps}kb`, 0, -72);
                 }
 
                 if (lastSpeakerTime[id] && (nowTime - lastSpeakerTime[id] < 500)) {
                     ctx.font = "12px sans-serif";
-                    ctx.fillText("🎙️", 0, settings.debugPing ? -70 : -56);
+                    ctx.fillText("🎙️", 0, -58);
                 }
 
                 ctx.fillStyle = "#ef4444";
