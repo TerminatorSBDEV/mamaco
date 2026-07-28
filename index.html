@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -11,11 +10,10 @@
         #controls-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); pointer-events: none; font-size: 0.85rem; color: rgba(255,255,255,0.7); background: rgba(15, 23, 42, 0.85); padding: 6px 14px; border-radius: 8px; border: 1px solid #475569; z-index: 10; text-align: center; }
         
         #top-btns { position: absolute; top: 10px; right: 170px; z-index: 10; display: flex; gap: 8px; }
+        #settings-btn-top { position: absolute; top: 10px; left: 320px; z-index: 10; background: #475569; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        #settings-btn-top:hover { background: #64748b; }
         .top-btn { background: #3b82f6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
         .top-btn:hover { background: #2563eb; }
-
-        #settings-btn-top { position: absolute; top: 10px; left: 320px; z-index: 10; background: #64748b; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        #settings-btn-top:hover { background: #475569; }
 
         #ammo-hud { position: absolute; bottom: 15px; right: 20px; font-weight: bold; font-size: 1.5rem; text-shadow: 2px 2px 4px #000; z-index: 10; color: #facc15; pointer-events: none; }
 
@@ -47,17 +45,14 @@
             #chat-box { width: 180px; height: 130px; font-size: 0.75rem; }
             #chat-messages { font-size: 0.75rem; padding: 4px; }
             #chat-input { font-size: 0.75rem; padding: 4px; }
+            #settings-btn-top { left: 240px; }
         }
 
         #shop-modal, #radio-modal, #gmod-modal, #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 340px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; z-index: 20; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
         .modal-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; text-align: center; }
-        .shop-item { margin-bottom: 12px; padding: 8px; background: #1e293b; border-radius: 6px; }
-        .shop-item button { width: 100%; padding: 6px; margin-top: 6px; background: #38bdf8; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #0f172a; }
+        .shop-item, .setting-row { margin-bottom: 12px; padding: 8px; background: #1e293b; border-radius: 6px; }
+        .shop-item button, .setting-row button { width: 100%; padding: 6px; margin-top: 6px; background: #38bdf8; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #0f172a; }
         .shop-item button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
-
-        .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #1e293b; padding: 8px 10px; border-radius: 6px; font-size: 0.85rem; }
-        .setting-row select, .setting-row input[type="checkbox"] { cursor: pointer; }
-        .warn-text { font-size: 0.7rem; color: #ef4444; margin-top: 2px; }
 
         #gmod-modal { width: 320px; background: #1e293b; border: 2px solid #64748b; }
         .gmod-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
@@ -71,6 +66,7 @@
 
         #minimap-container { position: absolute; top: 10px; right: 10px; width: 150px; height: 150px; background: rgba(15, 23, 42, 0.8); border: 2px solid #475569; border-radius: 8px; overflow: hidden; pointer-events: none; z-index: 10; }
         #minimapCanvas { width: 100%; height: 100%; display: block; }
+        .warn-text { color: #ef4444; font-size: 0.75rem; font-weight: bold; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -78,7 +74,7 @@
         HP: <span id="hp">100</span> | Points: <span id="pts">0</span> | Gun: <span id="wname">Rifle</span> | <span id="status">Connecting...</span>
     </div>
 
-    <button id="settings-btn-top">⚙️ Settings</button>
+    <button id="settings-btn-top">Settings</button>
 
     <div id="ammo-hud">30 / 30</div>
 
@@ -112,35 +108,29 @@
     <div id="mob-w5" class="mob-weapon-btn">W5</div>
 
     <div id="settings-modal">
-        <div class="modal-title">SETTINGS</div>
+        <div class="modal-title">Settings</div>
         <div class="setting-row">
-            <span>Debug ping and packets</span>
-            <input type="checkbox" id="set-debug" />
-        </div>
-        <div class="setting-row" style="flex-direction:column; align-items:flex-start;">
-            <div style="display:flex; justify-content:space-between; width:100%;">
-                <span>Client-sided calculations</span>
-                <input type="checkbox" id="set-clientcalc" />
-            </div>
-            <div class="warn-text">⚠ WARNING! THIS CAN INCREASE THE RISKS OF GETTING KICKED!</div>
+            <div>Debug ping and packets: <strong id="val-debug">Off</strong></div>
+            <button id="btn-toggle-debug">Toggle [Off]</button>
         </div>
         <div class="setting-row">
-            <span>Sounds</span>
-            <input type="checkbox" id="set-sounds" checked />
+            <div>Client-sided calculations: <strong id="val-clientside">Off</strong></div>
+            <div class="warn-text">⚠️WARNING! THIS CAN INCREASE THE RISKS OF GETTING KICKED!⚠️</div>
+            <button id="btn-toggle-clientside">Toggle [Off]</button>
         </div>
         <div class="setting-row">
-            <span>Automatic reloading</span>
-            <input type="checkbox" id="set-autoreload" />
+            <div>Sounds: <strong id="val-sounds">On</strong></div>
+            <button id="btn-toggle-sounds">Toggle [On]</button>
         </div>
         <div class="setting-row">
-            <span>Lerp interpolation</span>
-            <select id="set-lerp">
-                <option value="linear" selected>Linear</option>
-                <option value="smooth">Smooth</option>
-                <option value="constant">Constant</option>
-            </select>
+            <div>Automatic reloading: <strong id="val-autoreload">Off</strong></div>
+            <button id="btn-toggle-autoreload">Toggle [Off]</button>
         </div>
-        <button onclick="document.getElementById('settings-modal').style.display='none'" style="width:100%; background:#38bdf8; border:none; color:#0f172a; padding:6px; border-radius:4px; font-weight:bold; margin-top:8px; cursor:pointer;">Save & Close</button>
+        <div class="setting-row">
+            <div>Lerp interpolation: <strong id="val-lerpmode">Linear</strong></div>
+            <button id="btn-toggle-lerpmode">Switch [Linear]</button>
+        </div>
+        <button onclick="document.getElementById('settings-modal').style.display='none'" style="width:100%; background:#ef4444; border:none; color:white; padding:6px; border-radius:4px; margin-top:8px; cursor:pointer;">Close</button>
     </div>
 
     <div id="shop-modal">
@@ -264,13 +254,15 @@
         let physTarget = null;
         let isKicked = false;
 
-        let settingDebug = false;
-        let settingClientCalc = false;
-        let settingSounds = true;
-        let settingAutoReload = false;
-        let settingLerp = 'linear';
-
         let myAmmo = { current: 30, max: 30, isReloading: false };
+
+        const appSettings = {
+            debug: false,
+            clientSide: false,
+            sounds: true,
+            autoReload: false,
+            lerpMode: 'linear'
+        };
 
         const weaponStats = {
             1: { name: "Rifle", rate: 200, maxAmmo: 30 },
@@ -293,6 +285,7 @@
         const pendingImageChunks = {};
         const lastSpeakerTime = {};
         const micHeaderCache = {};
+        let debugMetrics = {};
 
         let joyActive = false;
         let joyVector = { x: 0, y: 0 };
@@ -301,7 +294,7 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
         function createNoiseBuffer() {
-            const bufferSize = audioCtx.sampleRate * 0.1;
+            const bufferSize = audioCtx.sampleRate * 0.5;
             const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
             const output = buffer.getChannelData(0);
             for (let i = 0; i < bufferSize; i++) {
@@ -310,9 +303,9 @@
             return buffer;
         }
         const noiseBuffer = createNoiseBuffer();
-        
+
         function playSfx(type, posX, posY) {
-            if (!settingSounds) return;
+            if (!appSettings.sounds) return;
             const now = audioCtx.currentTime;
             const gain = audioCtx.createGain();
             
@@ -323,85 +316,79 @@
                 if (dist > maxDist) return;
                 volume = Math.max(0, 1 - (dist / maxDist));
             }
-            gain.gain.value = volume;
+            gain.gain.setValueAtTime(volume, now);
             gain.connect(audioCtx.destination);
 
             if (type === 'rifle') {
-                const osc = audioCtx.createOscillator();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(350, now);
-                osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
-
                 const noise = audioCtx.createBufferSource();
                 noise.buffer = noiseBuffer;
-                const noiseFilter = audioCtx.createBiquadFilter();
-                noiseFilter.type = 'lowpass';
-                noiseFilter.frequency.setValueAtTime(1000, now);
-                noiseFilter.frequency.exponentialRampToValueAtTime(100, now + 0.12);
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1000, now);
+                filter.frequency.exponentialRampToValueAtTime(100, now + 0.18);
 
-                noise.connect(noiseFilter);
-                noiseFilter.connect(gain);
-                osc.connect(gain);
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
 
-                osc.start(now);
-                osc.stop(now + 0.12);
+                noise.connect(filter);
+                filter.connect(gain);
                 noise.start(now);
-                noise.stop(now + 0.12);
+                noise.stop(now + 0.18);
             } else if (type === 'smg') {
-                const osc = audioCtx.createOscillator();
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(600, now);
-                osc.frequency.exponentialRampToValueAtTime(80, now + 0.06);
-
                 const noise = audioCtx.createBufferSource();
                 noise.buffer = noiseBuffer;
-                noise.connect(gain);
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1200, now);
+                filter.frequency.exponentialRampToValueAtTime(200, now + 0.1);
 
-                osc.connect(gain);
-                osc.start(now);
-                osc.stop(now + 0.06);
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+                noise.connect(filter);
+                filter.connect(gain);
                 noise.start(now);
-                noise.stop(now + 0.06);
+                noise.stop(now + 0.1);
             } else if (type === 'sniper') {
                 const osc = audioCtx.createOscillator();
-                osc.type = 'triangle';
+                osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(180, now);
-                osc.frequency.exponentialRampToValueAtTime(20, now + 0.35);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.45);
 
                 const noise = audioCtx.createBufferSource();
                 noise.buffer = noiseBuffer;
-                const noiseGain = audioCtx.createGain();
-                noiseGain.gain.setValueAtTime(0.8, now);
-                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-                noise.connect(noiseGain);
-                noiseGain.connect(gain);
 
-                osc.connect(gain);
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(3000, now);
+                filter.frequency.exponentialRampToValueAtTime(80, now + 0.45);
+
+                gain.gain.setValueAtTime(volume * 1.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+
+                osc.connect(filter);
+                noise.connect(filter);
+                filter.connect(gain);
+
                 osc.start(now);
-                osc.stop(now + 0.35);
                 noise.start(now);
-                noise.stop(now + 0.35);
+                osc.stop(now + 0.45);
+                noise.stop(now + 0.45);
             } else if (type === 'shotgun') {
                 const noise = audioCtx.createBufferSource();
                 noise.buffer = noiseBuffer;
-                const noiseFilter = audioCtx.createBiquadFilter();
-                noiseFilter.type = 'lowpass';
-                noiseFilter.frequency.setValueAtTime(800, now);
-                noiseFilter.frequency.exponentialRampToValueAtTime(50, now + 0.25);
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(800, now);
+                filter.frequency.exponentialRampToValueAtTime(60, now + 0.32);
 
-                const osc = audioCtx.createOscillator();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(250, now);
-                osc.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+                gain.gain.setValueAtTime(volume * 1.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
 
-                noise.connect(noiseFilter);
-                noiseFilter.connect(gain);
-                osc.connect(gain);
-
+                noise.connect(filter);
+                filter.connect(gain);
                 noise.start(now);
-                noise.stop(now + 0.25);
-                osc.start(now);
-                osc.stop(now + 0.25);
+                noise.stop(now + 0.32);
             } else if (type === 'hit_wall') {
                 const osc = audioCtx.createOscillator();
                 osc.type = 'square';
@@ -577,6 +564,17 @@
 
         const incomingMicStreams = {};
 
+        function destroyMicStream(sId) {
+            if (incomingMicStreams[sId]) {
+                const mst = incomingMicStreams[sId];
+                if (mst.audio) {
+                    mst.audio.pause();
+                    mst.audio.src = "";
+                }
+                delete incomingMicStreams[sId];
+            }
+        }
+
         socket.on("connect", () => {
             socket.emit("join_virtual_server", { key });
         });
@@ -596,7 +594,7 @@
                     if (id === myId) {
                         let prevHp = myHp;
                         myHp = sp.hp;
-                        if (!settingClientCalc) {
+                        if (!appSettings.clientSide) {
                             myPos.x = sp.x;
                             myPos.y = sp.y;
                         }
@@ -607,7 +605,8 @@
                             myAmmo.current = sp.ammo[currentWeapon];
                             myAmmo.max = weaponStats[currentWeapon].maxAmmo;
                             myAmmo.isReloading = sp.isReloading;
-                            if (settingAutoReload && myAmmo.current <= 0 && !myAmmo.isReloading && currentWeapon !== 5) {
+
+                            if (appSettings.autoReload && myAmmo.current <= 0 && !myAmmo.isReloading && currentWeapon !== 5) {
                                 requestReload();
                             }
                         }
@@ -635,7 +634,7 @@
                     }
 
                     if (!renderPlayers[id]) {
-                        renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1, ping: sp.ping || 0, sentKb: sp.sentKb || 0 };
+                        renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1 };
                     }
                     players[id] = sp;
                 }
@@ -688,17 +687,18 @@
                         delete incomingAudioStreams[sId];
                     }
                 }
+                destroyMicStream(pkt.data.id);
             } else if (pkt.type === "kicked") {
                 isKicked = true;
                 socket.disconnect();
                 document.getElementById("status").innerText = "KICKED (Refresh to Reconnect)";
                 alert("You have been kicked from the server!");
+            } else if (pkt.type === "debug_metrics") {
+                debugMetrics = pkt.data.metrics || {};
             } else if (pkt.type === "medkit_sfx") {
                 try {
-                    if (settingSounds) {
-                        const audio = new Audio(pkt.data.base64);
-                        audio.play().catch(()=>{});
-                    }
+                    const audio = new Audio(pkt.data.base64);
+                    if (appSettings.sounds) audio.play().catch(()=>{});
                 } catch(e) {}
             } else if (pkt.type === "audio_chunk_receive") {
                 const { id: senderId, sessionId, chunkIndex, chunk, isLast } = pkt.data;
@@ -751,17 +751,10 @@
 
                 if (chunkIndex === 0 && chunk) {
                     micHeaderCache[senderId] = chunk;
+                    destroyMicStream(senderId);
                 }
 
-                if (chunkIndex === 0 || !incomingMicStreams[senderId]) {
-                    if (incomingMicStreams[senderId]) {
-                        try {
-                            incomingMicStreams[senderId].audio.pause();
-                            incomingMicStreams[senderId].audio.src = "";
-                        } catch(e) {}
-                        delete incomingMicStreams[senderId];
-                    }
-
+                if (!incomingMicStreams[senderId]) {
                     const mediaSource = new MediaSource();
                     const audio = new Audio();
                     audio.src = URL.createObjectURL(mediaSource);
@@ -837,7 +830,9 @@
                                 mst.audio.currentTime = end - 0.1 > start ? end - 0.1 : start;
                             }
                         }
-                        if (settingSounds) mst.audio.play().catch(() => {});
+                        if (appSettings.sounds) {
+                            mst.audio.play().catch(() => {});
+                        }
                     }
                 } catch(e) {}
             }
@@ -867,11 +862,11 @@
                     if (senderPlayer) {
                         const dist = Math.hypot(myPos.x - senderPlayer.x, myPos.y - senderPlayer.y);
                         const maxDist = 1500;
-                        const vol = (dist > maxDist) ? 0 : Math.max(0, 1 - (dist / maxDist));
+                        const vol = (!appSettings.sounds || dist > maxDist) ? 0 : Math.max(0, 1 - (dist / maxDist));
                         if (st.gainNode) {
-                            st.gainNode.gain.value = settingSounds ? vol : 0;
+                            st.gainNode.gain.value = vol;
                         }
-                        st.audio.volume = settingSounds ? vol : 0;
+                        st.audio.volume = vol;
                     }
                 }
             }
@@ -900,7 +895,9 @@
                     streamData.sourceBuffer.appendBuffer(nextChunk);
                     if (!streamData.isPlaying && streamData.audio) {
                         streamData.isPlaying = true;
-                        if (settingSounds) streamData.audio.play().catch(() => {});
+                        if (appSettings.sounds) {
+                            streamData.audio.play().catch(() => {});
+                        }
                     }
                 } catch(e) {}
             } else if (streamData.isComplete && streamData.mediaSource && streamData.mediaSource.readyState === 'open') {
@@ -965,21 +962,39 @@
             modal.style.display = modal.style.display === "block" ? "none" : "block";
         };
 
-        document.getElementById("set-debug").onchange = (e) => {
-            settingDebug = e.target.checked;
+        document.getElementById("btn-toggle-debug").onclick = () => {
+            appSettings.debug = !appSettings.debug;
+            document.getElementById("val-debug").innerText = appSettings.debug ? "On" : "Off";
+            document.getElementById("btn-toggle-debug").innerText = `Toggle [${appSettings.debug ? "On" : "Off"}]`;
         };
-        document.getElementById("set-clientcalc").onchange = (e) => {
-            settingClientCalc = e.target.checked;
-            socket.emit("RemoteEvent", { type: "client_calc_toggle", data: { id: myId, enabled: settingClientCalc } });
+
+        document.getElementById("btn-toggle-clientside").onclick = () => {
+            appSettings.clientSide = !appSettings.clientSide;
+            document.getElementById("val-clientside").innerText = appSettings.clientSide ? "On" : "Off";
+            document.getElementById("btn-toggle-clientside").innerText = `Toggle [${appSettings.clientSide ? "On" : "Off"}]`;
+            socket.emit("RemoteEvent", { type: "toggle_clientside", data: { id: myId, enabled: appSettings.clientSide } });
         };
-        document.getElementById("set-sounds").onchange = (e) => {
-            settingSounds = e.target.checked;
+
+        document.getElementById("btn-toggle-sounds").onclick = () => {
+            appSettings.sounds = !appSettings.sounds;
+            document.getElementById("val-sounds").innerText = appSettings.sounds ? "On" : "Off";
+            document.getElementById("btn-toggle-sounds").innerText = `Toggle [${appSettings.sounds ? "On" : "Off"}]`;
         };
-        document.getElementById("set-autoreload").onchange = (e) => {
-            settingAutoReload = e.target.checked;
+
+        document.getElementById("btn-toggle-autoreload").onclick = () => {
+            appSettings.autoReload = !appSettings.autoReload;
+            document.getElementById("val-autoreload").innerText = appSettings.autoReload ? "On" : "Off";
+            document.getElementById("btn-toggle-autoreload").innerText = `Toggle [${appSettings.autoReload ? "On" : "Off"}]`;
         };
-        document.getElementById("set-lerp").onchange = (e) => {
-            settingLerp = e.target.value;
+
+        document.getElementById("btn-toggle-lerpmode").onclick = () => {
+            if (appSettings.lerpMode === 'linear') appSettings.lerpMode = 'smooth';
+            else if (appSettings.lerpMode === 'smooth') appSettings.lerpMode = 'constant';
+            else appSettings.lerpMode = 'linear';
+
+            const cap = appSettings.lerpMode.charAt(0).toUpperCase() + appSettings.lerpMode.slice(1);
+            document.getElementById("val-lerpmode").innerText = cap;
+            document.getElementById("btn-toggle-lerpmode").innerText = `Switch [${cap}]`;
         };
 
         document.getElementById("shop-btn-top").onclick = () => {
@@ -1382,9 +1397,11 @@
             if (now - lastShot < stat.rate) return;
             lastShot = now;
 
-            if (settingClientCalc) {
+            if (appSettings.clientSide) {
                 myAmmo.current--;
-                socket.emit("RemoteEvent", { type: "client_calc_fire", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
+                updateAmmoHUD();
+                playSfx(currentWeapon === 1 ? 'rifle' : (currentWeapon === 2 ? 'smg' : (currentWeapon === 3 ? 'sniper' : 'shotgun')), myPos.x, myPos.y);
+                socket.emit("RemoteEvent", { type: "client_fire_bullet", data: { id: myId, x: myPos.x, y: myPos.y, angle: aimAngle, weapon: currentWeapon } });
             } else {
                 socket.emit("RemoteEvent", { type: "fire_bullet", data: { id: myId, angle: aimAngle, weapon: currentWeapon } });
             }
@@ -1422,8 +1439,13 @@
             return a + diff * t;
         }
 
-        function lerp(a, b, t) {
-            return a + (b - a) * t;
+        function calculateInterpolation(current, target, factor) {
+            if (appSettings.lerpMode === 'constant') return target;
+            if (appSettings.lerpMode === 'smooth') {
+                const smoothFactor = factor * factor * (3 - 2 * factor);
+                return current + (target - current) * smoothFactor;
+            }
+            return current + (target - current) * factor;
         }
 
         let lastInputEmit = 0;
@@ -1438,14 +1460,11 @@
                     aimAngle = Math.atan2(mousePos.y - screenCenterY, mousePos.x - screenCenterX);
                 }
 
-                if (((isMouseDown && currentWeapon !== 5) || isAimShooting) && !isPropMenuOpen()) {
-                    tryShoot();
-                }
-
-                if (settingClientCalc) {
+                if (appSettings.clientSide) {
                     let speed = 6;
                     let dx = 0;
                     let dy = 0;
+
                     if (isMobile) {
                         dx = joyVector.x * speed;
                         dy = joyVector.y * speed;
@@ -1458,36 +1477,36 @@
 
                     myPos.x = Math.max(0, Math.min(3000, myPos.x + dx));
                     myPos.y = Math.max(0, Math.min(3000, myPos.y + dy));
+                }
 
-                    if (currentWeapon === 5 && isMouseDown && physTarget) {
-                        const targetWorldX = myPos.x + (mousePos.x - screenCenterX);
-                        const targetWorldY = myPos.y + (mousePos.y - screenCenterY);
+                if (((isMouseDown && currentWeapon !== 5) || isAimShooting) && !isPropMenuOpen()) {
+                    tryShoot();
+                }
+
+                if (currentWeapon === 5 && isMouseDown && physTarget) {
+                    const targetWorldX = myPos.x + (mousePos.x - screenCenterX);
+                    const targetWorldY = myPos.y + (mousePos.y - screenCenterY);
+                    if (appSettings.clientSide) {
+                        socket.emit("RemoteEvent", { 
+                            type: "client_phys_drag", 
+                            data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY } 
+                        });
+                    } else {
                         socket.emit("RemoteEvent", { 
                             type: "phys_drag", 
                             data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY } 
                         });
                     }
+                }
 
-                    const now = Date.now();
-                    if (now - lastInputEmit >= 1000 / 15) {
-                        lastInputEmit = now;
-                        socket.emit("RemoteEvent", { type: "client_calc_state", data: { id: myId, x: myPos.x, y: myPos.y, angle: aimAngle, color: myColor, weapon: currentWeapon } });
-                    }
-                } else {
-                    if (currentWeapon === 5 && isMouseDown && physTarget) {
-                        const targetWorldX = myPos.x + (mousePos.x - screenCenterX);
-                        const targetWorldY = myPos.y + (mousePos.y - screenCenterY);
-                        socket.emit("RemoteEvent", { 
-                            type: "phys_drag", 
-                            data: { id: myId, physTarget, targetX: targetWorldX, targetY: targetWorldY } 
-                        });
-                    }
+                let inputData = isMobile ? { vector: joyVector } : { w: keys.w, a: keys.a, s: keys.s, d: keys.d };
 
-                    let inputData = isMobile ? { vector: joyVector } : { w: keys.w, a: keys.a, s: keys.s, d: keys.d };
-
-                    const now = Date.now();
-                    if (now - lastInputEmit >= 1000 / 50) {
-                        lastInputEmit = now;
+                const now = Date.now();
+                if (now - lastInputEmit >= 1000 / 15) {
+                    lastInputEmit = now;
+                    if (appSettings.clientSide) {
+                        socket.emit("RemoteEvent", { type: "client_player_update", data: { id: myId, x: myPos.x, y: myPos.y, angle: aimAngle, color: myColor, weapon: currentWeapon } });
+                    } else {
                         socket.emit("RemoteEvent", { type: "player_input", data: { id: myId, input: inputData, angle: aimAngle, color: myColor, weapon: currentWeapon } });
                     }
                 }
@@ -1496,8 +1515,22 @@
             for (let bId in renderBullets) {
                 const rb = renderBullets[bId];
                 if (bullets[bId]) {
-                    rb.x = lerp(rb.x, bullets[bId].x, 0.35);
-                    rb.y = lerp(rb.y, bullets[bId].y, 0.35);
+                    rb.x = calculateInterpolation(rb.x, bullets[bId].x, 0.35);
+                    rb.y = calculateInterpolation(rb.y, bullets[bId].y, 0.35);
+
+                    if (appSettings.clientSide && bullets[bId].shooterId === myId) {
+                        for (let targetId in renderPlayers) {
+                            if (targetId !== myId && renderPlayers[targetId].hp > 0) {
+                                const tp = renderPlayers[targetId];
+                                if (Math.hypot(tp.x - rb.x, tp.y - rb.y) < 25) {
+                                    socket.emit("RemoteEvent", { type: "client_hit_player", data: { shooterId: myId, targetId, bulletId: bId, damage: bullets[bId].damage } });
+                                    delete bullets[bId];
+                                    delete renderBullets[bId];
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 } else {
                     delete renderBullets[bId];
                 }
@@ -1569,34 +1602,19 @@
             for (let id in players) {
                 let sp = players[id];
                 if (!renderPlayers[id]) {
-                    renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1, ping: sp.ping || 0, sentKb: sp.sentKb || 0 };
+                    renderPlayers[id] = { x: sp.x, y: sp.y, angle: sp.angle, color: sp.color, hp: sp.hp, weapon: sp.weapon || 1 };
                 } else {
-                    if (id === myId && settingClientCalc) {
+                    if (id === myId && appSettings.clientSide) {
                         renderPlayers[id].x = myPos.x;
                         renderPlayers[id].y = myPos.y;
-                        renderPlayers[id].angle = aimAngle;
                     } else {
-                        if (settingLerp === 'constant') {
-                            renderPlayers[id].x = sp.x;
-                            renderPlayers[id].y = sp.y;
-                            renderPlayers[id].angle = sp.angle;
-                        } else if (settingLerp === 'smooth') {
-                            let t = 0.35;
-                            let sm = t * t * (3 - 2 * t);
-                            renderPlayers[id].x = lerp(renderPlayers[id].x, sp.x, sm);
-                            renderPlayers[id].y = lerp(renderPlayers[id].y, sp.y, sm);
-                            renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, sm);
-                        } else {
-                            renderPlayers[id].x = lerp(renderPlayers[id].x, sp.x, 0.35);
-                            renderPlayers[id].y = lerp(renderPlayers[id].y, sp.y, 0.35);
-                            renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, 0.35);
-                        }
+                        renderPlayers[id].x = calculateInterpolation(renderPlayers[id].x, sp.x, 0.3);
+                        renderPlayers[id].y = calculateInterpolation(renderPlayers[id].y, sp.y, 0.3);
                     }
+                    renderPlayers[id].angle = lerpAngle(renderPlayers[id].angle, sp.angle, 0.3);
                     renderPlayers[id].color = sp.color;
                     renderPlayers[id].hp = sp.hp;
                     renderPlayers[id].weapon = sp.weapon || 1;
-                    renderPlayers[id].ping = sp.ping || 0;
-                    renderPlayers[id].sentKb = sp.sentKb || 0;
                 }
             }
 
@@ -1692,13 +1710,6 @@
                 ctx.save();
                 ctx.translate(p.x, p.y);
 
-                if (settingDebug) {
-                    ctx.font = "10px sans-serif";
-                    ctx.fillStyle = "#34d399";
-                    ctx.textAlign = "center";
-                    ctx.fillText(`Ping: ${p.ping || 0}ms sent: ${p.sentKb || 0}kb`, 0, -72);
-                }
-
                 if (physTarget && physTarget.type === 'player' && physTarget.id === id) {
                     ctx.strokeStyle = "#00ffff";
                     ctx.lineWidth = 4;
@@ -1712,6 +1723,13 @@
                 ctx.fillStyle = "#38bdf8";
                 ctx.textAlign = "center";
                 ctx.fillText(id, 0, -42);
+
+                if (appSettings.debug && debugMetrics[id]) {
+                    const m = debugMetrics[id];
+                    ctx.font = "10px sans-serif";
+                    ctx.fillStyle = "#facc15";
+                    ctx.fillText(`Ping: ${m.ping}ms | Sent: ${m.sentKbps}kb/s`, 0, -72);
+                }
 
                 if (lastSpeakerTime[id] && (nowTime - lastSpeakerTime[id] < 500)) {
                     ctx.font = "12px sans-serif";
